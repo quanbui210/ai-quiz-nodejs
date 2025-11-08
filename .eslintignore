@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+*.js.map
+
+# Generated files
+src/generated/
+
+# Config files
+*.config.js
+*.config.mjs
+
+# Environment files
+.env
+.env.*
+
+# Coverage
+coverage/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+

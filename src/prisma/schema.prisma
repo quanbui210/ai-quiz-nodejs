@@ -44,7 +44,6 @@ model Quiz {
   expiresAt   DateTime?
   timer       Int?       // in seconds
   status      QuizStatus @default(PENDING)
-
   count       Int
   topic       Topic      @relation(fields: [topicId], references: [id])
   topicId     String

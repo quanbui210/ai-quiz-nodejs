@@ -1,8 +1,7 @@
 import { Request, Response } from "express";
 import OpenAI from "openai";
 import { Topic, Prisma } from "@prisma/client";
-
-
+import prisma from "../../utils/prisma";
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -11,12 +10,22 @@ export const suggestTopic = async (req: Request, res: Response) => {
   try {
     const { userTopic } = req.body;
 
-    if (!userTopic || typeof userTopic !== 'string' || userTopic.trim().length === 0) {
-      return res.status(400).json({ error: "userTopic is required and must be a non-empty string" });
+    if (
+      !userTopic ||
+      typeof userTopic !== "string" ||
+      userTopic.trim().length === 0
+    ) {
+      return res
+        .status(400)
+        .json({
+          error: "userTopic is required and must be a non-empty string",
+        });
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: "OpenAI API key is not configured" });
+      return res
+        .status(500)
+        .json({ error: "OpenAI API key is not configured" });
     }
 
     const response = await client.chat.completions.create({
@@ -56,21 +65,48 @@ export const suggestTopic = async (req: Request, res: Response) => {
     }
 
     const topics = topicContent
-      .split('\n')
-      .map(line => {
-        let cleaned = line.replace(/^\d+\.\s*/, '');
-        cleaned = cleaned.replace(/^[-*•]\s*/, '');
+      .split("\n")
+      .map((line) => {
+        let cleaned = line.replace(/^\d+\.\s*/, "");
+        cleaned = cleaned.replace(/^[-*•]\s*/, "");
         return cleaned.trim();
       })
-      .filter(topic => topic.length > 0) 
-      .slice(0, 3); 
+      .filter((topic) => topic.length > 0)
+      .slice(0, 3);
 
     if (topics.length === 0) {
       return res.status(400).json({ error: "No valid topics" });
     }
     return res.json({ topics });
   } catch (error: any) {
-    console.error('OpenAI API error:', error);
+    console.error("OpenAI API error:", error);
     return res.status(500).json({ error: "Failed to suggest topics" });
+  }
+};
+
+export const createTopic = async (req: Request, res: Response) => {
+  try {
+    const { name,  userId } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return res
+        .status(400)
+        .json({ error: "name is required and must be a non-empty string" });
+    }
+    if (!userId || typeof userId !== "string") {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const topic = await prisma.topic.create({
+      data: { 
+        name,
+        userId,
+      },
+    });
+
+    return res.json(topic);
+  } catch (error: any) {
+    console.error("OpenAI API error:", error);
+    return res.status(500).json({ error: "Failed to create topic" });
   }
 };
