@@ -1,0 +1,144 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  name           String?
+  avatarUrl      String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  topics         Topic[]
+  quizzes        Quiz[]
+  answers        Answer[]
+  progress       Progress[]
+}
+
+model Topic {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+
+  quizzes     Quiz[]
+  progress    Progress[]
+  suggestions Suggestion[]
+}
+
+model Quiz {
+  id          String     @id @default(uuid())
+  title       String
+  type        QuizType
+  difficulty  Difficulty
+  createdAt   DateTime   @default(now())
+  expiresAt   DateTime?
+  timer       Int?       // in seconds
+  status      QuizStatus @default(PENDING)
+
+  count       Int
+  topic       Topic      @relation(fields: [topicId], references: [id])
+  topicId     String
+
+  user        User       @relation(fields: [userId], references: [id])
+  userId      String
+
+  questions   Question[]
+}
+
+model Question {
+  id          String        @id @default(uuid())
+  text        String
+  type        QuestionType
+  options     Json?         // For MCQ (array of strings)
+  correct     String?       // Correct answer
+  createdAt   DateTime      @default(now())
+
+  quiz        Quiz          @relation(fields: [quizId], references: [id])
+  quizId      String
+
+  explanation Explanation?
+  answers     Answer[]
+}
+
+model Answer {
+  id          String     @id @default(uuid())
+  userAnswer  String
+  isCorrect   Boolean
+  createdAt   DateTime   @default(now())
+
+  question    Question   @relation(fields: [questionId], references: [id])
+  questionId  String
+
+  user        User       @relation(fields: [userId], references: [id])
+  userId      String
+}
+
+model Explanation {
+  id           String    @id @default(uuid())
+  content      String
+  createdAt    DateTime  @default(now())
+
+  question     Question  @relation(fields: [questionId], references: [id])
+  questionId   String    @unique
+}
+
+model Progress {
+  id           String    @id @default(uuid())
+  score        Float     @default(0)
+  total        Int       @default(0)
+  streak       Int       @default(0)
+  lastActive   DateTime  @default(now())
+
+  topic        Topic     @relation(fields: [topicId], references: [id])
+  topicId      String
+
+  user         User      @relation(fields: [userId], references: [id])
+  userId       String
+}
+
+model Suggestion {
+  id           String    @id @default(uuid())
+  suggestedTopic String
+  reason        String?
+  createdAt     DateTime  @default(now())
+
+  topic         Topic     @relation(fields: [topicId], references: [id])
+  topicId       String
+}
+
+
+
+enum QuizType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  SHORT_ANSWER
+  FILL_IN_BLANK
+}
+
+enum Difficulty {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+}
+
+enum QuizStatus {
+  PENDING
+  ACTIVE
+  COMPLETED
+}

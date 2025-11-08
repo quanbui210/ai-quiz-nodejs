@@ -8,7 +8,9 @@
     "start": "nodemon --exec ts-node src/app.ts",
     "lint": "eslint . --ext .ts",
     "format": "prettier --write .",
-    "test": "jest"
+    "test": "jest",
+    "prisma:generate": "npx prisma generate --schema=./src/prisma/schema.prisma --dotenv-config-path=./.env",
+    "prisma:migrate": "npx prisma migrate dev --schema=./src/prisma/schema.prisma --dotenv-config-path=./.env"
   },
   "author": "",
   "license": "ISC",
@@ -19,6 +21,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "nodemon": "^3.1.10",
+    "openai": "^6.8.1",
     "prisma": "^6.19.0"
   },
   "devDependencies": {
