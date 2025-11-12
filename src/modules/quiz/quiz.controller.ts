@@ -227,28 +227,91 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
     const topic = topicMatch ? topicMatch[1]?.trim() : "";
 
     const questionsSection = quizText.match(
-      /Questions?:([\s\S]*?)(?:Options?:|Correct Answers?:|Explanation?:)/i,
+      /Questions?:([\s\S]*?)(?:Options?:|Correct Answers?:|Explanations?:|Explanation?:)/i,
     );
     const questionsText = questionsSection ? questionsSection[1] : "";
 
     const optionsSection = quizText.match(
-      /Options?:([\s\S]*?)(?:Correct Answers?:|Explanation?:)/i,
+      /Options?:([\s\S]*?)(?:Correct Answers?:|Explanations?:|Explanation?:)/i,
     );
     const optionsText = optionsSection ? optionsSection[1] : "";
 
     const correctAnswersSection = quizText.match(
-      /Correct Answers?:([\s\S]*?)(?:Explanation?:|Difficulty?:)/i,
+      /Correct Answers?:([\s\S]*?)(?:Explanations?:|Explanation?:|Difficulty?:)/i,
     );
     const correctAnswersText = correctAnswersSection
       ? correctAnswersSection[1]
       : "";
 
+
+    let explanationsText = "";
+    
+    const patterns = [
+      /(?:^|\n)\s*-?\s*Explanations?:?\s*\n\s*([\s\S]*?)(?=\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At):|$)/im,
+      /-?\s*Explanations?:?\s*\n([\s\S]*?)(?=\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At):|$)/im,
+      /-?\s*Explanations?:?\s*\n([\s\S]+?)(?=\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At|$):|$)/im,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = quizText.match(pattern);
+      if (match && match[1]) {
+        const extracted = match[1].trim();
+        if (extracted.length > explanationsText.length) {
+          explanationsText = extracted;
+        }
+      }
+    }
+    
+    if (!explanationsText || explanationsText.length < 100) {
+      const endMatch = quizText.match(/-?\s*Explanations?:?\s*\n([\s\S]*)$/im);
+      if (endMatch && endMatch[1]) {
+        const extracted = endMatch[1].trim();
+        if (extracted.match(/\d+\./)) {
+          explanationsText = extracted;
+        }
+      }
+    }
+
     const explanationSection = quizText.match(
-      /Explanation:?\s*([\s\S]*?)(?:Difficulty?:|Question Count?:|Topic?:|Created At?:)/i,
+      /-?\s*Explanation:?\s*\n?([\s\S]*?)(?:\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At|Explanations):|$)/i,
     );
-    const explanationText = explanationSection
+    const singleExplanationText = explanationSection
       ? explanationSection[1]?.trim()
       : "";
+
+    let explanationLines: string[] = [];
+    if (explanationsText) {
+      const trimmed = explanationsText.trim();
+      
+      let matches = Array.from(trimmed.matchAll(/^\s*(\d+)\.\s*(.+?)(?=\n\s*\d+\.|$)/gms));
+      
+      if (matches.length === 0 || matches.length === 1) {
+        const altMatches = Array.from(trimmed.matchAll(/^\s*(\d+)\.\s*(.+)$/gm));
+        if (altMatches.length > matches.length) {
+          matches = altMatches;
+        }
+      }
+      
+      for (const match of matches) {
+        const expText = match[2]?.trim();
+        if (expText && expText.length > 0) {
+          explanationLines.push(expText);
+        }
+      }
+      
+      if (explanationLines.length === 0 || (explanationLines.length === 1 && trimmed.includes('\n'))) {
+        const fallbackLines = trimmed
+          .split(/(?=\n\s*\d+\.)/)
+          .map((line) => {
+            return line.replace(/^\s*\d+\.\s*/, '').trim();
+          })
+          .filter((line) => line.length > 0 && !line.match(/^Explanations?:/i));
+        
+        if (fallbackLines.length > explanationLines.length) {
+          explanationLines = fallbackLines;
+        }
+      }
+    }
 
     const questionLines = questionsText
       ? questionsText
@@ -256,6 +319,10 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           .map((line) => line.trim())
           .filter((line) => line.length > 0 && !line.match(/^Questions?:/i))
       : [];
+    
+    if (explanationLines.length > 0 && questionLines.length > 0 && explanationLines.length !== questionLines.length) {
+      console.warn(`Mismatch: Found ${explanationLines.length} explanations but ${questionLines.length} questions. Some questions may have missing explanations.`);
+    }
 
     const optionLines = optionsText
       ? optionsText
@@ -294,16 +361,32 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
         const questionOptions = allOptions.slice(startIndex, endIndex);
 
         const correct = correctAnswerLines[index]?.trim() || "";
+        
+        let explanation = "";
+        if (explanationLines.length > index && explanationLines[index]) {
+          explanation = explanationLines[index].trim();
+        } else if (explanationLines.length === 0 && singleExplanationText) {
+          explanation = singleExplanationText;
+        } else if (explanationLines.length > 0 && explanationLines.length < questionCount) {
+          // If we have some explanations but not enough, use the last one as fallback
+          // This handles cases where AI doesn't provide all explanations
+          explanation = explanationLines[explanationLines.length - 1] || "";
+          if (index >= explanationLines.length) {
+            console.warn(`Question ${index + 1} missing explanation (only ${explanationLines.length} provided for ${questionCount} questions), using last available explanation`);
+          }
+        }
+        
+        if (index === 0 || index === questionCount - 1) {
+          console.log(`Question ${index + 1} explanation:`, explanation.substring(0, 100) || "EMPTY");
+        }
 
-        // STRICT VALIDATION: Reject questions with fewer than 4 options
         if (questionOptions.length < OPTIONS_PER_QUESTION) {
           console.warn(
             `Question ${index + 1} has only ${questionOptions.length} options (expected ${OPTIONS_PER_QUESTION}). Skipping this question.`,
           );
-          return null; // Return null to filter out invalid questions
+          return null;
         }
 
-        // Ensure we have exactly 4 options (trim any extra)
         const validOptions = questionOptions
           .slice(0, OPTIONS_PER_QUESTION)
           .map(opt => opt.trim())
@@ -316,7 +399,6 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           return null;
         }
 
-        // Normalize correct answer (trim and normalize whitespace)
         const normalizedCorrect = correct.trim().replace(/\s+/g, ' ');
 
         return {
@@ -324,7 +406,7 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           type: QuestionType.MULTIPLE_CHOICE,
           options: validOptions,
           correct: normalizedCorrect,
-          explanation: explanationText || undefined,
+          explanation: explanation.length > 0 ? explanation : undefined,
         };
       })
       .filter((q): q is NonNullable<typeof q> => 
@@ -443,60 +525,62 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
 
     const response = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
-      temperature: 0.3, // Lower temperature for more consistent, structured output
+      temperature: 0.3, 
       messages: [
         {
           role: "system",
-          content: `You are a quiz creator assistant. Create a ${difficulty} level quiz with ${questionCount} questions about "${topic}".
+          content: `You are a quiz creator assistant. Create a ${difficulty} level quiz with exactly ${questionCount} questions about "${topic}".
 
-            Return the quiz in this EXACT format:
-            - Title: [Quiz Title]
-            - Questions:
-              1. [Question 1]
-              2. [Question 2]
-              ...
-            - Options:
-              1. [Option A for Q1]
-              2. [Option B for Q1]
-              3. [Option C for Q1]
-              4. [Option D for Q1]
-              5. [Option A for Q2]
-              6. [Option B for Q2]
-              7. [Option C for Q2]
-              8. [Option D for Q2]
-              ... (continue for all questions - exactly 4 options per question)
-            - Correct Answers:
-              1. [Correct answer for Q1 - must match one of the options exactly]
-              2. [Correct answer for Q2]
-              ...
-            - Explanation: [General explanation about the topic]
-            - Difficulty: ${difficulty}
-            - Topic: ${topic}
+Return the quiz in this EXACT format:
+- Title: [Quiz Title]
+- Questions:
+  1. [Question 1]
+  2. [Question 2]
+  ... (exactly ${questionCount} questions)
+- Options:
+  1. [Option A for Q1]
+  2. [Option B for Q1]
+  3. [Option C for Q1]
+  4. [Option D for Q1]
+  5. [Option A for Q2]
+  6. [Option B for Q2]
+  7. [Option C for Q2]
+  8. [Option D for Q2]
+  ... (exactly ${questionCount * 4} options total: 4 options × ${questionCount} questions)
+- Correct Answers:
+  1. [Correct answer for Q1 - copy EXACTLY from one of options 1-4]
+  2. [Correct answer for Q2 - copy EXACTLY from one of options 5-8]
+  ... (exactly ${questionCount} correct answers)
+- Explanations:
+  1. [Explanation for Q1]
+  2. [Explanation for Q2]
+  ... (exactly ${questionCount} explanations - one per question)
+- Difficulty: ${difficulty}
+- Topic: ${topic}
 
-            CRITICAL REQUIREMENTS:
-            1. EVERY question MUST have EXACTLY 4 options (A, B, C, D)
-            2. You MUST provide all 4 options for each question - no exceptions
-            3. The options must be numbered sequentially: 1-4 for Q1, 5-8 for Q2, 9-12 for Q3, etc.
-            4. For Correct Answers: You MUST copy the EXACT text from one of the 4 options - character for character, word for word
-            5. DO NOT paraphrase, reword, or modify the correct answer - copy it exactly as it appears in the Options section
-            6. If you cannot provide 4 options for a question, skip that question entirely
-            
-            EXAMPLE FORMAT (2 questions):
-            - Options:
-              1. Amazon S3
-              2. Amazon EC2
-              3. Amazon RDS
-              4. Amazon Lambda
-              5. CloudFront
-              6. Route 53
-              7. VPC
-              8. IAM
-            
-            - Correct Answers:
-              1. Amazon S3  (EXACTLY as written in option 1)
-              2. Route 53   (EXACTLY as written in option 6)
-            
-            REMEMBER: The correct answer text must be IDENTICAL to one of the option texts above.`,
+CRITICAL RULES:
+1. You MUST create exactly ${questionCount} questions - no more, no less
+2. Each question MUST have exactly 4 options - total of ${questionCount * 4} options numbered 1 through ${questionCount * 4}
+3. Correct answers MUST be copied EXACTLY from the Options section - same text, word for word
+4. You MUST provide exactly ${questionCount} explanations - numbered 1 through ${questionCount}, one per question
+5. If you cannot follow this format exactly, do not create the quiz
+
+EXAMPLE (2 questions = 8 options, 2 correct answers, 2 explanations):
+- Options:
+  1. Amazon S3
+  2. Amazon EC2
+  3. Amazon RDS
+  4. Amazon Lambda
+  5. CloudFront
+  6. Route 53
+  7. VPC
+  8. IAM
+- Correct Answers:
+  1. Amazon S3
+  2. Route 53
+- Explanations:
+  1. Amazon S3 is a scalable object storage service...
+  2. Route 53 is AWS's DNS web service...`,
         },
         {
           role: "user",
@@ -504,6 +588,8 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
         },
       ],
     });
+
+
 
     const quizText = response.choices[0]?.message?.content;
     if (!quizText) {
@@ -521,6 +607,18 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
       console.warn(
         `Expected ${questionCount} questions but only ${parsedQuiz.questions.length} passed validation. Some questions were missing required options.`
       );
+    }
+
+    const explanationCount = parsedQuiz.questions.filter(q => q.explanation && q.explanation.length > 0).length;
+    if (explanationCount < parsedQuiz.questions.length) {
+      console.error(`❌ Quiz validation failed: Only ${explanationCount} explanations provided for ${parsedQuiz.questions.length} questions.`);
+      console.error(`Expected ${parsedQuiz.questions.length} explanations but got ${explanationCount}.`);
+      return res.status(400).json({
+        error: "Quiz validation failed",
+        message: `The AI did not provide explanations for all questions. Expected ${parsedQuiz.questions.length} explanations but only got ${explanationCount}. Please try generating the quiz again.`,
+        expectedExplanations: parsedQuiz.questions.length,
+        actualExplanations: explanationCount,
+      });
     }
 
     const invalidQuestions = parsedQuiz.questions.filter(
@@ -558,7 +656,6 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
           };
         }
         
-        // If partial match, update the correct answer to match the exact option
         if (!exactMatch && partialMatch) {
           const matchedOption = q.options.find(opt => 
             opt.trim().toLowerCase().replace(/\s+/g, ' ').includes(normalizedCorrect) ||
@@ -848,43 +945,55 @@ export const deleteQuiz = async (req: Request & { user?: any }, res: Response) =
     if (quiz.userId !== req.user.id) {
       return res.status(403).json({ error: "You don't have permission to delete this quiz" });
     }
-    await prisma.answer.deleteMany({
-      where: {
-        attempt: {
+
+    const questions = await prisma.question.findMany({
+      where: { quizId: id },
+      select: { id: true },
+    });
+    const questionIds = questions.map((q) => q.id);
+
+    const attempts = await prisma.quizAttempt.findMany({
+      where: { quizId: id },
+      select: { id: true },
+    });
+    const attemptIds = attempts.map((a) => a.id);
+
+    await prisma.$transaction([
+      prisma.answer.deleteMany({
+        where: {
+          attemptId: {
+            in: attemptIds,
+          },
+        },
+      }),
+      prisma.quizAttempt.deleteMany({
+        where: {
           quizId: id,
         },
-      },
-    });
-    await prisma.quizAttempt.deleteMany({
-      where: {
-        quizId: id,
-      },
-    });
-    await prisma.answer.deleteMany({
-      where: {
-        question: {
+      }),
+      prisma.answer.deleteMany({
+        where: {
+          questionId: {
+            in: questionIds,
+          },
+        },
+      }),
+      prisma.explanation.deleteMany({
+        where: {
+          questionId: {
+            in: questionIds,
+          },
+        },
+      }),
+      prisma.question.deleteMany({
+        where: {
           quizId: id,
         },
-      },
-    });
-
-    await prisma.explanation.deleteMany({
-      where: {
-        question: {
-          quizId: id,
-        },
-      },
-    });
-
-    await prisma.question.deleteMany({
-      where: {
-        quizId: id,
-      },
-    });
-
-    await prisma.quiz.delete({
-      where: { id },
-    });
+      }),
+      prisma.quiz.delete({
+        where: { id },
+      }),
+    ]);
 
     return res.json({
       message: "Quiz deleted successfully",

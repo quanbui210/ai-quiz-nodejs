@@ -6,8 +6,7 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
   try {
     const { redirectTo } = req.query;
     const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
-    const redirectUrl =
-      (redirectTo as string) || `${backendUrl}/callback.html`;
+    const redirectUrl = (redirectTo as string) || `${backendUrl}/callback.html`;
 
     console.log("Initiating Google OAuth with redirectTo:", redirectUrl);
 
@@ -15,7 +14,7 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       provider: "google",
       options: {
         redirectTo: redirectUrl,
-        skipBrowserRedirect: false, 
+        skipBrowserRedirect: false,
         queryParams: {
           access_type: "offline",
           prompt: "consent",
@@ -25,13 +24,16 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
 
     console.log("OAuth response:", { data, error });
 
-    if (error 
-      || !data?.url
-    ) {
-      return res.status(400).json({ error: error?.message as string || "No redirect URL received" || "OAuth error" });
+    if (error || !data?.url) {
+      return res
+        .status(400)
+        .json({
+          error:
+            (error?.message as string) ||
+            "No redirect URL received" ||
+            "OAuth error",
+        });
     }
-
-   
 
     return res.json({
       url: data.url,
@@ -44,7 +46,6 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
 
 export const handleCallback = async (req: Request, res: Response) => {
   try {
-  
     if (req.method === "POST" && req.body.access_token) {
       const { access_token, refresh_token, expires_at } = req.body;
 
@@ -59,7 +60,9 @@ export const handleCallback = async (req: Request, res: Response) => {
       }
 
       if (!sessionData?.user?.id) {
-        return res.status(400).json({ error: "Invalid session data: missing user ID" });
+        return res
+          .status(400)
+          .json({ error: "Invalid session data: missing user ID" });
       }
 
       const supabaseUserId = sessionData.user.id;
@@ -79,13 +82,20 @@ export const handleCallback = async (req: Request, res: Response) => {
         });
 
         if (existingUser) {
-          
           try {
-            await prisma.answer.deleteMany({ where: { userId: existingUser.id } });
-            await prisma.progress.deleteMany({ where: { userId: existingUser.id } });
-            await prisma.quiz.deleteMany({ where: { userId: existingUser.id } });
-            await prisma.topic.deleteMany({ where: { userId: existingUser.id } });
-            
+            await prisma.answer.deleteMany({
+              where: { userId: existingUser.id },
+            });
+            await prisma.progress.deleteMany({
+              where: { userId: existingUser.id },
+            });
+            await prisma.quiz.deleteMany({
+              where: { userId: existingUser.id },
+            });
+            await prisma.topic.deleteMany({
+              where: { userId: existingUser.id },
+            });
+
             await prisma.user.delete({
               where: { id: existingUser.id },
             });
@@ -122,7 +132,6 @@ export const handleCallback = async (req: Request, res: Response) => {
         code as string,
       );
 
-
       if (error) {
         return res.status(400).json({ error: error.message });
       }
@@ -140,7 +149,7 @@ export const handleCallback = async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error("Callback error:", error);
-    return res.status(500).json({ 
+    return res.status(500).json({
       error: "Failed to handle OAuth callback",
       message: error?.message || "Unknown error",
     });
@@ -152,10 +161,10 @@ export const getSession = async (req: Request, res: Response) => {
     const { data, error } = await supabase.auth.getSession();
 
     if (error || !data.session) {
-      return res.status(401).json({ error: error?.message as string || "No active session" });
+      return res
+        .status(401)
+        .json({ error: (error?.message as string) || "No active session" });
     }
-
- 
 
     return res.json({
       user: data.session.user,
@@ -181,22 +190,25 @@ export const signOut = async (req: Request, res: Response) => {
   }
 };
 
-export const getCurrentUser = async (req: Request & { user?: any }, res: Response) => {
+export const getCurrentUser = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
-    // First verify Supabase authentication
     const {
       data: { user: supabaseUser },
       error: supabaseError,
     } = await supabase.auth.getUser();
 
     if (supabaseError || !supabaseUser) {
-      return res.status(401).json({ error: supabaseError?.message || "No user found" });
+      return res
+        .status(401)
+        .json({ error: supabaseError?.message || "No user found" });
     }
 
-    // Get Prisma User using Supabase Auth ID
     const prismaUser = await prisma.user.findUnique({
       where: {
-        id: supabaseUser.id, // Use Supabase Auth ID directly
+        id: supabaseUser.id,
       },
     });
 

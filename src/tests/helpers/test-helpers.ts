@@ -1,6 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-import prisma from '../../utils/prisma';
-
+import { PrismaClient } from "@prisma/client";
+import prisma from "../../utils/prisma";
 
 export async function cleanupTestData() {
   await prisma.answer.deleteMany({});
@@ -13,7 +12,6 @@ export async function cleanupTestData() {
   await prisma.user.deleteMany({});
 }
 
-
 export async function createTestUser(data?: {
   id?: string;
   email?: string;
@@ -21,23 +19,24 @@ export async function createTestUser(data?: {
 }) {
   return prisma.user.create({
     data: {
-      id: data?.id || 'test-user-id',
-      email: data?.email || 'test@example.com',
-      name: data?.name || 'Test User',
+      id: data?.id || "test-user-id",
+      email: data?.email || "test@example.com",
+      name: data?.name || "Test User",
     },
   });
 }
 
-
-export async function createTestTopic(userId: string, data?: { name?: string }) {
+export async function createTestTopic(
+  userId: string,
+  data?: { name?: string },
+) {
   return prisma.topic.create({
     data: {
-      name: data?.name || 'Test Topic',
+      name: data?.name || "Test Topic",
       userId,
     },
   });
 }
-
 
 export async function createTestQuiz(
   userId: string,
@@ -46,11 +45,11 @@ export async function createTestQuiz(
 ) {
   return prisma.quiz.create({
     data: {
-      title: data?.title || 'Test Quiz',
-      type: 'MULTIPLE_CHOICE',
-      difficulty: 'INTERMEDIATE',
+      title: data?.title || "Test Quiz",
+      type: "MULTIPLE_CHOICE",
+      difficulty: "INTERMEDIATE",
       count: data?.count || 3,
-      status: 'PENDING',
+      status: "PENDING",
       userId,
       topicId,
     },
@@ -63,12 +62,11 @@ export async function createTestQuestion(
 ) {
   return prisma.question.create({
     data: {
-      text: data?.text || 'What is 2 + 2?',
-      type: 'MULTIPLE_CHOICE',
-      options: ['2', '3', '4', '5'],
-      correct: data?.correct || '4',
+      text: data?.text || "What is 2 + 2?",
+      type: "MULTIPLE_CHOICE",
+      options: ["2", "3", "4", "5"],
+      correct: data?.correct || "4",
       quizId,
     },
   });
 }
-

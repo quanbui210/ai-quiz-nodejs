@@ -19,15 +19,15 @@ export const authenticate = async (
   next: NextFunction,
 ) => {
   try {
-    // Extract token from Authorization header
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ error: "Missing or invalid authorization header" });
+      return res
+        .status(401)
+        .json({ error: "Missing or invalid authorization header" });
     }
 
     const token = authHeader.substring(7); // Remove "Bearer " prefix
 
-    // Create a Supabase client for this request
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: false,
@@ -35,7 +35,6 @@ export const authenticate = async (
       },
     });
 
-    // Verify the token and get user
     const {
       data: { user: supabaseUser },
       error: userError,
@@ -47,7 +46,7 @@ export const authenticate = async (
 
     let prismaUser = await prisma.user.findUnique({
       where: {
-        id: supabaseUser.id, 
+        id: supabaseUser.id,
       },
     });
 
@@ -56,21 +55,29 @@ export const authenticate = async (
         data: {
           id: supabaseUser.id, // Use Supabase Auth ID as Prisma User ID
           email: supabaseUser.email as string,
-          name: supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name,
+          name:
+            supabaseUser.user_metadata?.name ||
+            supabaseUser.user_metadata?.full_name,
           avatarUrl: supabaseUser.user_metadata?.avatar_url,
         },
       });
     } else {
       const needsUpdate =
-        prismaUser.name !== (supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name) ||
+        prismaUser.name !==
+          (supabaseUser.user_metadata?.name ||
+            supabaseUser.user_metadata?.full_name) ||
         prismaUser.avatarUrl !== supabaseUser.user_metadata?.avatar_url;
 
       if (needsUpdate) {
         prismaUser = await prisma.user.update({
           where: { id: supabaseUser.id },
           data: {
-            name: supabaseUser.user_metadata?.name || supabaseUser.user_metadata?.full_name || prismaUser.name,
-            avatarUrl: supabaseUser.user_metadata?.avatar_url || prismaUser.avatarUrl,
+            name:
+              supabaseUser.user_metadata?.name ||
+              supabaseUser.user_metadata?.full_name ||
+              prismaUser.name,
+            avatarUrl:
+              supabaseUser.user_metadata?.avatar_url || prismaUser.avatarUrl,
           },
         });
       }
@@ -83,4 +90,3 @@ export const authenticate = async (
     return res.status(500).json({ error: "Authentication failed" });
   }
 };
-

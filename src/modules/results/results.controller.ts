@@ -1,15 +1,16 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
 
-
-export const getQuizResult = async (req: Request & { user?: any }, res: Response) => {
+export const getQuizResult = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { quizId } = req.params;
 
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
     }
-
 
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
@@ -24,7 +25,6 @@ export const getQuizResult = async (req: Request & { user?: any }, res: Response
       return res.status(404).json({ error: "Quiz not found" });
     }
 
-  
     const attempt = await prisma.quizAttempt.findFirst({
       where: {
         quizId,
@@ -69,9 +69,10 @@ export const getQuizResult = async (req: Request & { user?: any }, res: Response
         select: { id: true, userId: true },
       });
 
-      return res.status(404).json({ 
+      return res.status(404).json({
         error: "No quiz attempt found",
-        message: "You haven't submitted answers for this quiz yet. Please submit your answers first using POST /api/v1/quiz/:quizId/submit",
+        message:
+          "You haven't submitted answers for this quiz yet. Please submit your answers first using POST /api/v1/quiz/:quizId/submit",
         quizId,
         quizTitle: quiz.title,
         debug: {
@@ -83,7 +84,6 @@ export const getQuizResult = async (req: Request & { user?: any }, res: Response
       });
     }
 
-    // Format the result
     const result = {
       id: attempt.id,
       quiz: attempt.quiz,
@@ -106,12 +106,16 @@ export const getQuizResult = async (req: Request & { user?: any }, res: Response
     return res.json({ result });
   } catch (error: any) {
     console.error("Get quiz result error:", error);
-    return res.status(500).json({ error: "Failed to get quiz result", message: error.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to get quiz result", message: error.message });
   }
 };
 
-
-export const getResult = async (req: Request & { user?: any }, res: Response) => {
+export const getResult = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { attemptId } = req.params;
 
@@ -159,7 +163,6 @@ export const getResult = async (req: Request & { user?: any }, res: Response) =>
       return res.status(403).json({ error: "Access denied" });
     }
 
-    // Format the result
     const result = {
       id: attempt.id,
       quiz: attempt.quiz,
@@ -182,12 +185,16 @@ export const getResult = async (req: Request & { user?: any }, res: Response) =>
     return res.json({ result });
   } catch (error: any) {
     console.error("Get result error:", error);
-    return res.status(500).json({ error: "Failed to get result", message: error.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to get result", message: error.message });
   }
 };
 
-
-export const listResults = async (req: Request & { user?: any }, res: Response) => {
+export const listResults = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
@@ -246,15 +253,16 @@ export const listResults = async (req: Request & { user?: any }, res: Response) 
     });
   } catch (error: any) {
     console.error("List results error:", error);
-    return res.status(500).json({ error: "Failed to list results", message: error.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to list results", message: error.message });
   }
 };
 
-/**
- * Get comprehensive user analytics for dashboard
- * Includes all topics, quizzes, attempts, and performance metrics
- */
-export const getUserStats = async (req: Request & { user?: any }, res: Response) => {
+export const getUserStats = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
@@ -262,22 +270,16 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
 
     const userId = req.user.id;
 
-    // Get all basic counts
-    const [
-      totalTopics,
-      totalQuizzes,
-      totalAttempts,
-      totalQuestions,
-    ] = await Promise.all([
-      prisma.topic.count({ where: { userId } }),
-      prisma.quiz.count({ where: { userId } }),
-      prisma.quizAttempt.count({ where: { userId } }),
-      prisma.question.count({
-        where: { quiz: { userId } },
-      }),
-    ]);
+    const [totalTopics, totalQuizzes, totalAttempts, totalQuestions] =
+      await Promise.all([
+        prisma.topic.count({ where: { userId } }),
+        prisma.quiz.count({ where: { userId } }),
+        prisma.quizAttempt.count({ where: { userId } }),
+        prisma.question.count({
+          where: { quiz: { userId } },
+        }),
+      ]);
 
-    // Get attempt statistics
     const [
       averageScore,
       bestScore,
@@ -327,7 +329,6 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
       }),
     ]);
 
-    // Get attempts by difficulty
     const attemptsByDifficulty = await prisma.quizAttempt.groupBy({
       by: ["quizId"],
       where: { userId },
@@ -335,7 +336,6 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
       _avg: { score: true, timeSpent: true },
     });
 
-    // Get quiz details for attempts
     const quizDetails = await prisma.quiz.findMany({
       where: {
         id: { in: attemptsByDifficulty.map((a) => a.quizId) },
@@ -363,7 +363,6 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
       };
     });
 
-    // Get recent attempts (last 10)
     const recentAttempts = await prisma.quizAttempt.findMany({
       where: { userId },
       include: {
@@ -380,10 +379,10 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
       take: 10,
     });
 
-    // Calculate time efficiency (average time spent vs time set)
-    const timeEfficiency = averageTimeSet._avg.timer && averageTimeSpent._avg.timeSpent
-      ? ((averageTimeSpent._avg.timeSpent / averageTimeSet._avg.timer) * 100)
-      : null;
+    const timeEfficiency =
+      averageTimeSet._avg.timer && averageTimeSpent._avg.timeSpent
+        ? (averageTimeSpent._avg.timeSpent / averageTimeSet._avg.timer) * 100
+        : null;
 
     return res.json({
       analytics: {
@@ -414,10 +413,14 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
         },
         time: {
           totalTimeSpent: totalTimeSpent._sum.timeSpent || 0, // seconds
-          averageTimeSpent: Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100, // seconds
+          averageTimeSpent:
+            Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100, // seconds
           totalTimeSet: totalTimeSet._sum.timer || 0, // seconds
-          averageTimeSet: Math.round((averageTimeSet._avg.timer || 0) * 100) / 100, // seconds
-          timeEfficiency: timeEfficiency ? Math.round(timeEfficiency * 100) / 100 : null, // percentage
+          averageTimeSet:
+            Math.round((averageTimeSet._avg.timer || 0) * 100) / 100, // seconds
+          timeEfficiency: timeEfficiency
+            ? Math.round(timeEfficiency * 100) / 100
+            : null, // percentage
         },
         attemptsByQuiz: attemptsWithDetails,
         recentAttempts: recentAttempts.map((attempt) => ({
@@ -436,7 +439,8 @@ export const getUserStats = async (req: Request & { user?: any }, res: Response)
     });
   } catch (error: any) {
     console.error("Get user analytics error:", error);
-    return res.status(500).json({ error: "Failed to get user analytics", message: error.message });
+    return res
+      .status(500)
+      .json({ error: "Failed to get user analytics", message: error.message });
   }
 };
-

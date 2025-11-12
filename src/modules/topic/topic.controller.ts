@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
 
-export const listTopics = async (req: Request & { user?: any }, res: Response) => {
+export const listTopics = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
@@ -30,7 +33,10 @@ export const getTopic = async (req: Request, res: Response) => {
   }
 };
 
-export const createTopic = async (req: Request & { user?: any }, res: Response) => {
+export const createTopic = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { name } = req.body;
 

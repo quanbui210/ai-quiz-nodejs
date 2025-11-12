@@ -1,8 +1,7 @@
-import { Request, Response } from 'express';
-import { createTopic, suggestTopic, validateTopic } from '../topic.controller';
+import { Request, Response } from "express";
+import { createTopic, suggestTopic, validateTopic } from "../topic.controller";
 
-
-jest.mock('../../../utils/prisma', () => ({
+jest.mock("../../../utils/prisma", () => ({
   __esModule: true,
   default: {
     topic: {
@@ -12,4 +11,3 @@ jest.mock('../../../utils/prisma', () => ({
     },
   },
 }));
-
