@@ -58,20 +58,48 @@ export const handleCallback = async (req: Request, res: Response) => {
         return res.status(400).json({ error: sessionError.message });
       }
 
-      const user = await prisma.user.findUnique({
+      if (!sessionData?.user?.id) {
+        return res.status(400).json({ error: "Invalid session data: missing user ID" });
+      }
+
+      const supabaseUserId = sessionData.user.id;
+      const userEmail = sessionData.user.email as string;
+
+      let user = await prisma.user.findUnique({
         where: {
-          email: sessionData?.user?.email,
+          id: supabaseUserId,
         },
       });
 
       if (!user) {
-        await prisma.user.create({
+        const existingUser = await prisma.user.findUnique({
+          where: {
+            email: userEmail,
+          },
+        });
+
+        if (existingUser) {
+          
+          try {
+            await prisma.answer.deleteMany({ where: { userId: existingUser.id } });
+            await prisma.progress.deleteMany({ where: { userId: existingUser.id } });
+            await prisma.quiz.deleteMany({ where: { userId: existingUser.id } });
+            await prisma.topic.deleteMany({ where: { userId: existingUser.id } });
+            
+            await prisma.user.delete({
+              where: { id: existingUser.id },
+            });
+          } catch (deleteError: any) {
+            console.error("Error deleting old user data:", deleteError);
+          }
+        }
+
+        user = await prisma.user.create({
           data: {
-            email: sessionData?.user?.email as string,
-            name: sessionData?.user?.user_metadata?.name as string,
-            avatarUrl: sessionData?.user?.user_metadata?.avatar_url as string,
-            createdAt: new Date(),
-            updatedAt: new Date(),
+            id: supabaseUserId,
+            email: userEmail,
+            name: sessionData.user.user_metadata?.name as string,
+            avatarUrl: sessionData.user.user_metadata?.avatar_url as string,
           },
         });
       }
@@ -110,8 +138,12 @@ export const handleCallback = async (req: Request, res: Response) => {
       error: "Missing authorization code or token",
       message: "Expected POST request with tokens or GET with code parameter",
     });
-  } catch (error) {
-    return res.status(500).json({ error: "Failed to handle OAuth callback" });
+  } catch (error: any) {
+    console.error("Callback error:", error);
+    return res.status(500).json({ 
+      error: "Failed to handle OAuth callback",
+      message: error?.message || "Unknown error",
+    });
   }
 };
 
@@ -149,22 +181,30 @@ export const signOut = async (req: Request, res: Response) => {
   }
 };
 
-export const getCurrentUser = async (req: Request, res: Response) => {
+export const getCurrentUser = async (req: Request & { user?: any }, res: Response) => {
   try {
+    // First verify Supabase authentication
     const {
-      data: { user },
-      error,
+      data: { user: supabaseUser },
+      error: supabaseError,
     } = await supabase.auth.getUser();
 
-    if (error) {
-      return res.status(401).json({ error: error.message });
+    if (supabaseError || !supabaseUser) {
+      return res.status(401).json({ error: supabaseError?.message || "No user found" });
     }
 
-    if (!user) {
-      return res.status(401).json({ error: "No user found" });
+    // Get Prisma User using Supabase Auth ID
+    const prismaUser = await prisma.user.findUnique({
+      where: {
+        id: supabaseUser.id, // Use Supabase Auth ID directly
+      },
+    });
+
+    if (!prismaUser) {
+      return res.status(404).json({ error: "User profile not found" });
     }
 
-    return res.json({ user });
+    return res.json({ user: prismaUser });
   } catch (error) {
     return res.status(500).json({ error: "Failed to get user" });
   }

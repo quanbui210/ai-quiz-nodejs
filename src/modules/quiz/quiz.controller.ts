@@ -15,6 +15,189 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+export const listQuizzes = async (req: Request & { user?: any }, res: Response) => {
+  const { topicId } = req.params;
+  if (!topicId || typeof topicId !== "string") {
+    return res.status(400).json({ error: "topicId is required" });
+  }
+  try {
+    const quizzes = await prisma.quiz.findMany({
+      where: { topicId },
+    });
+    return res.json({ quizzes });
+  }
+  catch (error: any) {
+    console.error("Prisma error:", error);
+    return res.status(500).json({ error: "Failed to list quizzes" });
+  }
+};
+
+export const suggestQuizTopic = async (req: Request, res: Response) => {
+  try {
+    const { userTopic } = req.body;
+
+    if (
+      !userTopic ||
+      typeof userTopic !== "string" ||
+      userTopic.trim().length === 0
+    ) {
+      return res.status(400).json({
+        error: "userTopic is required and must be a non-empty string",
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res
+        .status(500)
+        .json({ error: "OpenAI API key is not configured" });
+    }
+
+    const response = await client.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      temperature: 0.7, 
+      messages: [
+        {
+          role: "system",
+          content: `
+            You are a quiz topic suggestion assistant. Your task is to suggest 3 specific quiz topics 
+            that are suitable for creating practice quizzes and study materials.
+            
+            Focus on topics that:
+            - Are good for quiz questions and practice tests
+            - Cover specific concepts, rules, or knowledge areas to study
+            - Are suitable for theory practice and self-assessment
+            - Help users practice and test their understanding
+            
+            Examples:
+            - Input: "driving license" → Output: "Traffic Signs and Signals", "Road Rules and Regulations", "Vehicle Safety and Maintenance"
+            - Input: "math" → Output: "Algebra Basics", "Geometry Fundamentals", "Calculus Derivatives"
+            - Input: "history" → Output: "World War II Events", "Ancient Civilizations", "Renaissance Period"
+            
+            Return ONLY the 3 topic names, one per line, without numbering, bullets, or explanations.
+            Make them concise, specific, and quiz-friendly.
+          `,
+        },
+        {
+          role: "user",
+          content: `Suggest 3 quiz topics for practice and study related to: "${userTopic.trim()}"`,
+        },
+      ],
+    });
+
+    const topicContent = response.choices[0]?.message?.content;
+    if (!topicContent) {
+      return res.status(400).json({ error: "No topic suggested" });
+    }
+
+    const topics = topicContent
+      .split("\n")
+      .map((line) => {
+        let cleaned = line.replace(/^\d+\.\s*/, "");
+        cleaned = cleaned.replace(/^[-*•]\s*/, "");
+        return cleaned.trim();
+      })
+      .filter((topic) => topic.length > 0)
+      .slice(0, 3);
+
+    if (topics.length === 0) {
+      return res.status(400).json({ error: "No valid topics" });
+    }
+    return res.json({ topics });
+  } catch (error: any) {
+    console.error("OpenAI API error:", error);
+    if (error.status === 429) {
+      return res.status(429).json({
+        error: "OpenAI API quota exceeded. Please check your billing.",
+      });
+    }
+    if (error.status === 401) {
+      return res.status(500).json({
+        error: "OpenAI API key is invalid",
+      });
+    }
+    return res.status(500).json({ error: "Failed to suggest quiz topics" });
+  }
+};
+
+
+export const validateQuizTopic = async (req: Request, res: Response) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || typeof name !== "string" || name.trim().length === 0) {
+      return res.status(400).json({ error: "name is required and must be a non-empty string" });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "OpenAI API key is not configured" });
+    }
+
+    const response = await client.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      temperature: 0.3, // Lower temperature for consistent validation
+      messages: [
+        {
+          role: "system",
+          content: `
+          You are a quiz topic validation assistant. Your task is to validate if the quiz topic name is specific enough for generating quiz questions.
+          
+          Return true if the topic is specific and suitable for quiz questions and study materials, otherwise return false and provide a reason why the topic is not valid. Also provide a suggestion for a valid topic.
+
+          Rules:
+          - Topics must be specific (e.g., "JavaScript Closures" not just "JavaScript")
+          - Topics must be suitable for creating multiple quiz questions
+          - Single words like "code", "exam", "drive", "test" are too general - return false
+          - Nonsense words or characters - return false
+          - Topics that are too broad (e.g., "coding", "math", "history") - return false, suggest specific subtopics
+          - Topics that are not suitable for quiz questions - return false
+          
+          Examples:
+          - "JavaScript" → false, suggest "JavaScript Closures" or "JavaScript Promises"
+          - "driving" → false, suggest "Traffic Signs and Signals" or "Road Safety Rules"
+          - "JavaScript Closures" → true
+          - "Traffic Signs and Signals" → true
+          `,
+        },
+        {
+          role: "user",
+          content: `Validate the quiz topic: "${name}"`,
+        },
+      ],
+    });
+
+    const topicContent = response.choices[0]?.message?.content;
+    if (!topicContent) {
+      return res.status(400).json({ error: "No validation response" });
+    }
+
+    const isValid = topicContent.toLowerCase().includes("true");
+    if (!isValid) {
+      return res.status(400).json({ 
+        error: topicContent,
+        isValid: false 
+      });
+    }
+
+    return res.json({ 
+      isValid: true, 
+      message: "Topic is valid for quiz generation" 
+    });
+  } catch (error: any) {
+    console.error("OpenAI API error:", error);
+    if (error.status === 429) {
+      return res.status(429).json({
+        error: "OpenAI API quota exceeded. Please check your billing.",
+      });
+    }
+    if (error.status === 401) {
+      return res.status(500).json({
+        error: "OpenAI API key is invalid",
+      });
+    }
+    return res.status(500).json({ error: "Failed to validate quiz topic" });
+  }
+};
+
 interface ParsedQuiz {
   title: string;
   questions: Array<{
@@ -112,21 +295,41 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
 
         const correct = correctAnswerLines[index]?.trim() || "";
 
+        // STRICT VALIDATION: Reject questions with fewer than 4 options
         if (questionOptions.length < OPTIONS_PER_QUESTION) {
           console.warn(
-            `Question ${index + 1} has only ${questionOptions.length} options (expected ${OPTIONS_PER_QUESTION})`,
+            `Question ${index + 1} has only ${questionOptions.length} options (expected ${OPTIONS_PER_QUESTION}). Skipping this question.`,
           );
+          return null; // Return null to filter out invalid questions
         }
+
+        // Ensure we have exactly 4 options (trim any extra)
+        const validOptions = questionOptions
+          .slice(0, OPTIONS_PER_QUESTION)
+          .map(opt => opt.trim())
+          .filter(opt => opt.length > 0);
+        
+        if (validOptions.length < OPTIONS_PER_QUESTION) {
+          console.warn(
+            `Question ${index + 1} has ${validOptions.length} valid options (expected ${OPTIONS_PER_QUESTION}). Skipping this question.`,
+          );
+          return null;
+        }
+
+        // Normalize correct answer (trim and normalize whitespace)
+        const normalizedCorrect = correct.trim().replace(/\s+/g, ' ');
 
         return {
           text: text || "",
           type: QuestionType.MULTIPLE_CHOICE,
-          options: questionOptions.length > 0 ? questionOptions : [],
-          correct: correct || "",
+          options: validOptions,
+          correct: normalizedCorrect,
           explanation: explanationText || undefined,
         };
       })
-      .filter((q) => q.text.length > 0);
+      .filter((q): q is NonNullable<typeof q> => 
+        q !== null && q.text.length > 0 && q.options.length === OPTIONS_PER_QUESTION
+      );
 
     return {
       title: title || "Untitled Quiz",
@@ -194,7 +397,7 @@ export const testCreateQuiz = async (req: Request, res: Response) => {
   return res.json(parsedQuiz);
 };
 
-export const createQuiz = async (req: Request, res: Response) => {
+export const createQuiz = async (req: Request & { user?: any }, res: Response) => {
   try {
     const {
       topic,
@@ -203,8 +406,11 @@ export const createQuiz = async (req: Request, res: Response) => {
       quizType,
       timer,
       topicId,
-      userId,
     } = req.body;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
 
     if (!topic || typeof topic !== "string" || topic.trim().length === 0) {
       return res
@@ -229,9 +435,6 @@ export const createQuiz = async (req: Request, res: Response) => {
     if (!topicId || typeof topicId !== "string") {
       return res.status(400).json({ error: "topicId is required" });
     }
-    if (!userId || typeof userId !== "string") {
-      return res.status(400).json({ error: "userId is required" });
-    }
     if (!process.env.OPENAI_API_KEY) {
       return res
         .status(500)
@@ -240,6 +443,7 @@ export const createQuiz = async (req: Request, res: Response) => {
 
     const response = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
+      temperature: 0.3, // Lower temperature for more consistent, structured output
       messages: [
         {
           role: "system",
@@ -257,7 +461,10 @@ export const createQuiz = async (req: Request, res: Response) => {
               3. [Option C for Q1]
               4. [Option D for Q1]
               5. [Option A for Q2]
-              ... (continue for all questions)
+              6. [Option B for Q2]
+              7. [Option C for Q2]
+              8. [Option D for Q2]
+              ... (continue for all questions - exactly 4 options per question)
             - Correct Answers:
               1. [Correct answer for Q1 - must match one of the options exactly]
               2. [Correct answer for Q2]
@@ -266,7 +473,30 @@ export const createQuiz = async (req: Request, res: Response) => {
             - Difficulty: ${difficulty}
             - Topic: ${topic}
 
-            IMPORTANT: Each question must have exactly 4 options. The correct answer must exactly match one of the options.`,
+            CRITICAL REQUIREMENTS:
+            1. EVERY question MUST have EXACTLY 4 options (A, B, C, D)
+            2. You MUST provide all 4 options for each question - no exceptions
+            3. The options must be numbered sequentially: 1-4 for Q1, 5-8 for Q2, 9-12 for Q3, etc.
+            4. For Correct Answers: You MUST copy the EXACT text from one of the 4 options - character for character, word for word
+            5. DO NOT paraphrase, reword, or modify the correct answer - copy it exactly as it appears in the Options section
+            6. If you cannot provide 4 options for a question, skip that question entirely
+            
+            EXAMPLE FORMAT (2 questions):
+            - Options:
+              1. Amazon S3
+              2. Amazon EC2
+              3. Amazon RDS
+              4. Amazon Lambda
+              5. CloudFront
+              6. Route 53
+              7. VPC
+              8. IAM
+            
+            - Correct Answers:
+              1. Amazon S3  (EXACTLY as written in option 1)
+              2. Route 53   (EXACTLY as written in option 6)
+            
+            REMEMBER: The correct answer text must be IDENTICAL to one of the option texts above.`,
         },
         {
           role: "user",
@@ -287,6 +517,77 @@ export const createQuiz = async (req: Request, res: Response) => {
         .json({ error: "Failed to parse quiz. Please try again." });
     }
 
+    if (parsedQuiz.questions.length < questionCount) {
+      console.warn(
+        `Expected ${questionCount} questions but only ${parsedQuiz.questions.length} passed validation. Some questions were missing required options.`
+      );
+    }
+
+    const invalidQuestions = parsedQuiz.questions.filter(
+      (q) => q.options.length !== 4 || q.options.some(opt => !opt || opt.trim().length === 0)
+    );
+
+    if (invalidQuestions.length > 0) {
+      console.error(`Found ${invalidQuestions.length} questions with invalid options. Questions must have exactly 4 non-empty options.`);
+      return res.status(400).json({
+        error: "Quiz validation failed",
+        message: `Some questions are missing options. Each question must have exactly 4 options. Please try generating the quiz again.`,
+        invalidQuestionsCount: invalidQuestions.length,
+      });
+    }
+
+    const questionsWithInvalidAnswers = parsedQuiz.questions
+      .map((q, index) => {
+        const normalizedOptions = q.options.map(opt => opt.trim().toLowerCase().replace(/\s+/g, ' '));
+        const normalizedCorrect = q.correct.trim().toLowerCase().replace(/\s+/g, ' ');
+        
+        const exactMatch = normalizedOptions.includes(normalizedCorrect);
+        
+        const partialMatch = normalizedOptions.some(opt => 
+          opt.includes(normalizedCorrect) || normalizedCorrect.includes(opt)
+        );
+        
+        if (!exactMatch && !partialMatch) {
+          return {
+            questionIndex: index + 1,
+            questionText: q.text,
+            correctAnswer: q.correct,
+            options: q.options,
+            normalizedCorrect,
+            normalizedOptions,
+          };
+        }
+        
+        // If partial match, update the correct answer to match the exact option
+        if (!exactMatch && partialMatch) {
+          const matchedOption = q.options.find(opt => 
+            opt.trim().toLowerCase().replace(/\s+/g, ' ').includes(normalizedCorrect) ||
+            normalizedCorrect.includes(opt.trim().toLowerCase().replace(/\s+/g, ' '))
+          );
+          if (matchedOption) {
+            q.correct = matchedOption.trim();
+          }
+        }
+        
+        return null;
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    if (questionsWithInvalidAnswers.length > 0) {
+      console.error(`Found ${questionsWithInvalidAnswers.length} questions where correct answer doesn't match any option.`);
+      console.error('Invalid questions:', JSON.stringify(questionsWithInvalidAnswers, null, 2));
+      return res.status(400).json({
+        error: "Quiz validation failed",
+        message: `Some questions have correct answers that don't match any of the provided options. Please try generating the quiz again.`,
+        invalidAnswersCount: questionsWithInvalidAnswers.length,
+        details: questionsWithInvalidAnswers.map(q => ({
+          question: q.questionText.substring(0, 50) + '...',
+          correctAnswer: q.correctAnswer,
+          options: q.options,
+        })),
+      });
+    }
+
     const quiz = await prisma.quiz.create({
       data: {
         title: parsedQuiz.title,
@@ -296,7 +597,7 @@ export const createQuiz = async (req: Request, res: Response) => {
         timer: timer || null,
         status: QuizStatus.PENDING,
         topicId,
-        userId,
+        userId: req.user.id,
         questions: {
           create: parsedQuiz.questions.map((q) => ({
             text: q.text,
@@ -346,20 +647,30 @@ export const createQuiz = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Get quiz by ID (without correct answers)
- */
+
 export const getQuiz = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
     const quiz = await prisma.quiz.findUnique({
       where: { id },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        difficulty: true,
+        createdAt: true,
+        expiresAt: true,
+        timer: true,
+        status: true,
+        count: true,
+        topicId: true,
+        userId: true,
         topic: {
           select: {
             id: true,
             name: true,
+            description: true,
           },
         },
         questions: {
@@ -373,14 +684,14 @@ export const getQuiz = async (req: Request, res: Response) => {
             createdAt: "asc",
           },
         },
-      } as Prisma.QuizInclude,
+      },
     });
 
     if (!quiz) {
       return res.status(404).json({ error: "Quiz not found" });
     }
 
-    return res.json(quiz);
+    return res.json({ quiz });
   } catch (error: any) {
     console.error("Get quiz error:", error);
     return res
@@ -389,22 +700,20 @@ export const getQuiz = async (req: Request, res: Response) => {
   }
 };
 
-/**
- * Submit answers and get results
- */
-export const submitAnswers = async (req: Request, res: Response) => {
+
+export const submitAnswers = async (req: Request & { user?: any }, res: Response) => {
   try {
     const { quizId } = req.params;
-    const { answers, userId } = req.body;
+    const { answers, timeSpent } = req.body;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
 
     if (!answers || !Array.isArray(answers) || answers.length === 0) {
       return res.status(400).json({ error: "answers array is required" });
     }
-    if (!userId || typeof userId !== "string") {
-      return res.status(400).json({ error: "userId is required" });
-    }
 
-    // Get quiz with correct answers
     const quiz = await prisma.quiz.findUnique({
       where: { id: quizId },
       include: {
@@ -434,17 +743,6 @@ export const submitAnswers = async (req: Request, res: Response) => {
           question.correct?.toLowerCase().trim() ===
           answer.userAnswer.toLowerCase().trim();
 
-        prisma.answer
-          .create({
-            data: {
-              questionId: answer.questionId,
-              userId,
-              userAnswer: answer.userAnswer,
-              isCorrect,
-            },
-          })
-          .catch((err) => console.error("Error saving answer:", err));
-
         return {
           questionId: question.id,
           questionText: question.text,
@@ -456,22 +754,63 @@ export const submitAnswers = async (req: Request, res: Response) => {
       },
     );
 
-    const correctCount = results.filter((r: any) => r.isCorrect).length;
+    const correctCount = results.filter((r: any) => r.isCorrect && !r.error).length;
     const totalQuestions = quiz.questions.length;
     const score = (correctCount / totalQuestions) * 100;
 
-    await prisma.quiz.update({
+    // Create QuizAttempt with all answers linked
+    const attempt = await prisma.quizAttempt.create({
+      data: {
+        quizId: quiz.id,
+        userId: req.user.id,
+        score: Math.round(score * 100) / 100,
+        correctCount,
+        totalQuestions,
+        timeSpent: timeSpent ? Number(timeSpent) : null,
+        answers: {
+          create: answers.map((answer: { questionId: string; userAnswer: string }) => {
+            const question = quiz.questions.find((q) => q.id === answer.questionId);
+            const isCorrect =
+              question?.correct?.toLowerCase().trim() ===
+              answer.userAnswer.toLowerCase().trim();
+
+            return {
+              questionId: answer.questionId,
+              userId: req.user.id,
+              userAnswer: answer.userAnswer,
+              isCorrect: isCorrect || false,
+            };
+          }),
+        },
+      },
+      include: {
+        answers: {
+          include: {
+            question: {
+              include: {
+                explanation: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+-    await prisma.quiz.update({
       where: { id: quizId },
       data: { status: QuizStatus.COMPLETED },
     });
 
     return res.json({
+      attemptId: attempt.id,
       quizId: quiz.id,
       quizTitle: quiz.title,
-      score: Math.round(score * 100) / 100,
-      correctCount,
-      totalQuestions,
-      results,
+      score: attempt.score,
+      correctCount: attempt.correctCount,
+      totalQuestions: attempt.totalQuestions,
+      timeSpent: attempt.timeSpent,
+      completedAt: attempt.completedAt,
+      results: results.filter((r: any) => !r.error),
     });
   } catch (error: any) {
     console.error("Submit answers error:", error);
@@ -480,3 +819,83 @@ export const submitAnswers = async (req: Request, res: Response) => {
       .json({ error: "Failed to submit answers", message: error.message });
   }
 };
+
+export const deleteQuiz = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    if (!id || typeof id !== "string") {
+      return res.status(400).json({ error: "Quiz ID is required" });
+    }
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        userId: true,
+        title: true,
+      },
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ error: "Quiz not found" });
+    }
+
+    if (quiz.userId !== req.user.id) {
+      return res.status(403).json({ error: "You don't have permission to delete this quiz" });
+    }
+    await prisma.answer.deleteMany({
+      where: {
+        attempt: {
+          quizId: id,
+        },
+      },
+    });
+    await prisma.quizAttempt.deleteMany({
+      where: {
+        quizId: id,
+      },
+    });
+    await prisma.answer.deleteMany({
+      where: {
+        question: {
+          quizId: id,
+        },
+      },
+    });
+
+    await prisma.explanation.deleteMany({
+      where: {
+        question: {
+          quizId: id,
+        },
+      },
+    });
+
+    await prisma.question.deleteMany({
+      where: {
+        quizId: id,
+      },
+    });
+
+    await prisma.quiz.delete({
+      where: { id },
+    });
+
+    return res.json({
+      message: "Quiz deleted successfully",
+      deletedQuizId: id,
+      deletedQuizTitle: quiz.title,
+    });
+  } catch (error: any) {
+    console.error("Delete quiz error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to delete quiz", message: error.message });
+  }
+};
+

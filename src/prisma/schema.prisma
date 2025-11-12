@@ -8,7 +8,7 @@ generator client {
 }
 
 model User {
-  id             String    @id @default(uuid())
+  id             String    @id // Uses Supabase Auth user ID (no auto-generation)
   email          String    @unique
   name           String?
   avatarUrl      String?
@@ -19,6 +19,7 @@ model User {
   quizzes        Quiz[]
   answers        Answer[]
   progress       Progress[]
+  attempts       QuizAttempt[]
 }
 
 model Topic {
@@ -52,6 +53,7 @@ model Quiz {
   userId      String
 
   questions   Question[]
+  attempts    QuizAttempt[]
 }
 
 model Question {
@@ -80,6 +82,27 @@ model Answer {
 
   user        User       @relation(fields: [userId], references: [id])
   userId      String
+
+  attempt     QuizAttempt? @relation(fields: [attemptId], references: [id])
+  attemptId   String?
+}
+
+model QuizAttempt {
+  id            String     @id @default(uuid())
+  score          Float      // Percentage score (0-100)
+  correctCount   Int
+  totalQuestions Int
+  timeSpent      Int?       // Time spent in seconds
+  completedAt    DateTime   @default(now())
+  createdAt      DateTime   @default(now())
+
+  quiz           Quiz       @relation(fields: [quizId], references: [id])
+  quizId         String
+
+  user           User       @relation(fields: [userId], references: [id])
+  userId         String
+
+  answers        Answer[]
 }
 
 model Explanation {
