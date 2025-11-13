@@ -244,71 +244,17 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
       : "";
 
 
-    let explanationsText = "";
-    
-    const patterns = [
-      /(?:^|\n)\s*-?\s*Explanations?:?\s*\n\s*([\s\S]*?)(?=\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At):|$)/im,
-      /-?\s*Explanations?:?\s*\n([\s\S]*?)(?=\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At):|$)/im,
-      /-?\s*Explanations?:?\s*\n([\s\S]+?)(?=\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At|$):|$)/im,
-    ];
-    
-    for (const pattern of patterns) {
-      const match = quizText.match(pattern);
-      if (match && match[1]) {
-        const extracted = match[1].trim();
-        if (extracted.length > explanationsText.length) {
-          explanationsText = extracted;
-        }
-      }
-    }
-    
-    if (!explanationsText || explanationsText.length < 100) {
-      const endMatch = quizText.match(/-?\s*Explanations?:?\s*\n([\s\S]*)$/im);
-      if (endMatch && endMatch[1]) {
-        const extracted = endMatch[1].trim();
-        if (extracted.match(/\d+\./)) {
-          explanationsText = extracted;
-        }
-      }
-    }
-
-    const explanationSection = quizText.match(
-      /-?\s*Explanation:?\s*\n?([\s\S]*?)(?:\n\s*-?\s*(?:Difficulty|Question Count|Topic|Created At|Explanations):|$)/i,
-    );
-    const singleExplanationText = explanationSection
-      ? explanationSection[1]?.trim()
-      : "";
-
     let explanationLines: string[] = [];
-    if (explanationsText) {
-      const trimmed = explanationsText.trim();
+    
+    const explanationsIndex = quizText.search(/-?\s*Explanations?:?\s*\n/i);
+    if (explanationsIndex !== -1) {
+      const afterExplanations = quizText.substring(explanationsIndex);
+      const explanationsText = afterExplanations.replace(/^-?\s*Explanations?:?\s*\n/i, '').trim();
       
-      let matches = Array.from(trimmed.matchAll(/^\s*(\d+)\.\s*(.+?)(?=\n\s*\d+\.|$)/gms));
-      
-      if (matches.length === 0 || matches.length === 1) {
-        const altMatches = Array.from(trimmed.matchAll(/^\s*(\d+)\.\s*(.+)$/gm));
-        if (altMatches.length > matches.length) {
-          matches = altMatches;
-        }
-      }
-      
-      for (const match of matches) {
-        const expText = match[2]?.trim();
-        if (expText && expText.length > 0) {
-          explanationLines.push(expText);
-        }
-      }
-      
-      if (explanationLines.length === 0 || (explanationLines.length === 1 && trimmed.includes('\n'))) {
-        const fallbackLines = trimmed
-          .split(/(?=\n\s*\d+\.)/)
-          .map((line) => {
-            return line.replace(/^\s*\d+\.\s*/, '').trim();
-          })
-          .filter((line) => line.length > 0 && !line.match(/^Explanations?:/i));
-        
-        if (fallbackLines.length > explanationLines.length) {
-          explanationLines = fallbackLines;
+      const allMatches = Array.from(explanationsText.matchAll(/(\d+)\.\s*([^\n]+)/g));
+      for (const match of allMatches) {
+        if (match[2]) {
+          explanationLines.push(match[2].trim());
         }
       }
     }
@@ -362,23 +308,7 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
 
         const correct = correctAnswerLines[index]?.trim() || "";
         
-        let explanation = "";
-        if (explanationLines.length > index && explanationLines[index]) {
-          explanation = explanationLines[index].trim();
-        } else if (explanationLines.length === 0 && singleExplanationText) {
-          explanation = singleExplanationText;
-        } else if (explanationLines.length > 0 && explanationLines.length < questionCount) {
-          // If we have some explanations but not enough, use the last one as fallback
-          // This handles cases where AI doesn't provide all explanations
-          explanation = explanationLines[explanationLines.length - 1] || "";
-          if (index >= explanationLines.length) {
-            console.warn(`Question ${index + 1} missing explanation (only ${explanationLines.length} provided for ${questionCount} questions), using last available explanation`);
-          }
-        }
-        
-        if (index === 0 || index === questionCount - 1) {
-          console.log(`Question ${index + 1} explanation:`, explanation.substring(0, 100) || "EMPTY");
-        }
+        const explanation = explanationLines[index]?.trim() || "";
 
         if (questionOptions.length < OPTIONS_PER_QUESTION) {
           console.warn(
@@ -525,7 +455,7 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
 
     const response = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
-      temperature: 0.3, 
+      temperature: 0.2,
       messages: [
         {
           role: "system",
@@ -561,9 +491,10 @@ Return the quiz in this EXACT format:
 CRITICAL RULES:
 1. You MUST create exactly ${questionCount} questions - no more, no less
 2. Each question MUST have exactly 4 options - total of ${questionCount * 4} options numbered 1 through ${questionCount * 4}
-3. Correct answers MUST be copied EXACTLY from the Options section - same text, word for word
+3. Correct answers MUST be copied EXACTLY from the Options section - same text, word for word, same capitalization, same punctuation. DO NOT create new text that is not in the options.
 4. You MUST provide exactly ${questionCount} explanations - numbered 1 through ${questionCount}, one per question
-5. If you cannot follow this format exactly, do not create the quiz
+5. For each question, the correct answer MUST be one of the 4 options you listed for that question. Look at the options for that question and copy one of them exactly.
+6. If you cannot follow this format exactly, do not create the quiz
 
 EXAMPLE (2 questions = 8 options, 2 correct answers, 2 explanations):
 - Options:
@@ -584,12 +515,20 @@ EXAMPLE (2 questions = 8 options, 2 correct answers, 2 explanations):
         },
         {
           role: "user",
-          content: `Create a ${difficulty} level quiz about "${topic}" with ${questionCount} multiple choice questions.`,
+          content: `Create a ${difficulty} level quiz about "${topic}" with ${questionCount} multiple choice questions.
+
+CRITICAL REQUIREMENTS:
+1. You MUST create exactly ${questionCount} questions - no more, no less
+2. Each question MUST have exactly 4 options - total of ${questionCount * 4} options numbered 1 through ${questionCount * 4}
+3. Correct answers MUST be copied EXACTLY word-for-word from one of the options in the Options section - same text, same capitalization, same punctuation
+4. You MUST provide exactly ${questionCount} explanations - numbered 1 through ${questionCount}, one per question
+5. DO NOT create correct answers that are not in the options list
+6. DO NOT paraphrase or modify the correct answer text - it must match an option EXACTLY
+
+The correct answer for each question must be one of the 4 options you provided for that question. Copy it exactly as it appears in the Options section.`,
         },
       ],
     });
-
-
 
     const quizText = response.choices[0]?.message?.content;
     if (!quizText) {
@@ -611,8 +550,6 @@ EXAMPLE (2 questions = 8 options, 2 correct answers, 2 explanations):
 
     const explanationCount = parsedQuiz.questions.filter(q => q.explanation && q.explanation.length > 0).length;
     if (explanationCount < parsedQuiz.questions.length) {
-      console.error(`❌ Quiz validation failed: Only ${explanationCount} explanations provided for ${parsedQuiz.questions.length} questions.`);
-      console.error(`Expected ${parsedQuiz.questions.length} explanations but got ${explanationCount}.`);
       return res.status(400).json({
         error: "Quiz validation failed",
         message: `The AI did not provide explanations for all questions. Expected ${parsedQuiz.questions.length} explanations but only got ${explanationCount}. Please try generating the quiz again.`,
@@ -855,7 +792,6 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
     const totalQuestions = quiz.questions.length;
     const score = (correctCount / totalQuestions) * 100;
 
-    // Create QuizAttempt with all answers linked
     const attempt = await prisma.quizAttempt.create({
       data: {
         quizId: quiz.id,

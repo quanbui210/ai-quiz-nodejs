@@ -270,6 +270,14 @@ export const getUserStats = async (
 
     const userId = req.user.id;
 
+    const now = new Date();
+    const startOfToday = new Date(now.setHours(0, 0, 0, 0));
+    const startOfWeek = new Date(startOfToday);
+    startOfWeek.setDate(startOfToday.getDate() - startOfToday.getDay());
+    const startOfLastWeek = new Date(startOfWeek);
+    startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+    const endOfLastWeek = new Date(startOfWeek);
+
     const [totalTopics, totalQuizzes, totalAttempts, totalQuestions] =
       await Promise.all([
         prisma.topic.count({ where: { userId } }),
@@ -379,6 +387,178 @@ export const getUserStats = async (
       take: 10,
     });
 
+    const [
+      thisWeekAttempts,
+      lastWeekAttempts,
+      thisWeekTopics,
+      lastWeekTopics,
+      thisWeekAverageScore,
+      lastWeekAverageScore,
+    ] = await Promise.all([
+      prisma.quizAttempt.count({
+        where: {
+          userId,
+          completedAt: { gte: startOfWeek },
+        },
+      }),
+      prisma.quizAttempt.count({
+        where: {
+          userId,
+          completedAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        },
+      }),
+      prisma.topic.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfWeek },
+        },
+      }),
+      prisma.topic.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        },
+      }),
+      prisma.quizAttempt.aggregate({
+        where: {
+          userId,
+          completedAt: { gte: startOfWeek },
+        },
+        _avg: { score: true },
+      }),
+      prisma.quizAttempt.aggregate({
+        where: {
+          userId,
+          completedAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        },
+        _avg: { score: true },
+      }),
+    ]);
+
+    const topicsWithProgress = await prisma.topic.findMany({
+      where: { userId },
+      include: {
+        quizzes: {
+          include: {
+            attempts: {
+              where: { userId },
+              select: {
+                score: true,
+                completedAt: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const topicsProgress = topicsWithProgress.map((topic) => {
+      const allQuizzes = topic.quizzes;
+      const totalQuizzes = allQuizzes.length;
+      const completedQuizzes = allQuizzes.filter(
+        (q) => q.attempts && q.attempts.length > 0,
+      ).length;
+      const allScores = allQuizzes.flatMap((q) => q.attempts.map((a) => a.score));
+      const averageScore =
+        allScores.length > 0
+          ? allScores.reduce((sum: number, score: number) => sum + score, 0) / allScores.length
+          : 0;
+
+      const allAttemptDates = allQuizzes
+        .flatMap((q) => q.attempts.map((a) => a.completedAt))
+        .filter((date): date is Date => date !== null);
+
+      return {
+        topicId: topic.id,
+        topicName: topic.name,
+        totalQuizzes,
+        completedQuizzes,
+        progressPercentage: totalQuizzes > 0 ? Math.round((completedQuizzes / totalQuizzes) * 100) : 0,
+        averageScore: Math.round(averageScore * 100) / 100,
+        lastAttemptAt:
+          allAttemptDates.length > 0
+            ? allAttemptDates.sort((a, b) => b.getTime() - a.getTime())[0]
+            : null,
+      };
+    });
+
+    const getTimeSeriesData = async (days: number) => {
+      const now = new Date();
+      const endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+      const startDate = new Date(endDate);
+      startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
+      startDate.setUTCHours(0, 0, 0, 0);
+
+      const attempts = await prisma.quizAttempt.findMany({
+        where: {
+          userId,
+          completedAt: {
+            gte: startDate,
+            lte: endDate,
+          },
+        },
+        select: {
+          score: true,
+          completedAt: true,
+        },
+        orderBy: { completedAt: "asc" },
+      });
+
+      const dailyData: { [key: string]: number[] } = {};
+      attempts.forEach((attempt) => {
+        if (attempt.completedAt) {
+          const attemptDate = new Date(attempt.completedAt);
+          const dateKey = attemptDate.toISOString().split("T")[0];
+          if (dateKey) {
+            if (!dailyData[dateKey]) {
+              dailyData[dateKey] = [];
+            }
+            dailyData[dateKey].push(attempt.score);
+          }
+        }
+      });
+
+      const result: Array<{
+        date: string;
+        averageScore: number | null;
+        attemptCount: number;
+      }> = [];
+      
+      for (let i = 0; i < days; i++) {
+        const date = new Date(startDate);
+        date.setUTCDate(startDate.getUTCDate() + i);
+        const dateKey = date.toISOString().split("T")[0];
+        
+        if (dateKey) {
+          const scores = dailyData[dateKey] || [];
+          const averageScore =
+            scores.length > 0
+              ? scores.reduce((sum: number, s: number) => sum + s, 0) / scores.length
+              : null;
+
+          result.push({
+            date: dateKey,
+            averageScore: averageScore ? Math.round(averageScore * 100) / 100 : null,
+            attemptCount: scores.length,
+          });
+        }
+      }
+
+      return result;
+    };
+
+    const [performance7Days, performance30Days, performance90Days] =
+      await Promise.all([
+        getTimeSeriesData(7),
+        getTimeSeriesData(30),
+        getTimeSeriesData(90),
+      ]);
+
+    const overallProgress = Math.round((averageScore._avg.score || 0) * 100) / 100;
+    const thisWeekProgress = Math.round((thisWeekAverageScore._avg.score || 0) * 100) / 100;
+    const lastWeekProgress = Math.round((lastWeekAverageScore._avg.score || 0) * 100) / 100;
+    const progressChange = thisWeekProgress - lastWeekProgress;
+
     const timeEfficiency =
       averageTimeSet._avg.timer && averageTimeSpent._avg.timeSpent
         ? (averageTimeSpent._avg.timeSpent / averageTimeSet._avg.timer) * 100
@@ -391,9 +571,27 @@ export const getUserStats = async (
           totalQuizzes,
           totalAttempts,
           totalQuestions,
+          overallProgress,
+        },
+        weeklyComparison: {
+          attempts: {
+            thisWeek: thisWeekAttempts,
+            lastWeek: lastWeekAttempts,
+            change: thisWeekAttempts - lastWeekAttempts,
+          },
+          topics: {
+            thisWeek: thisWeekTopics,
+            lastWeek: lastWeekTopics,
+            change: thisWeekTopics - lastWeekTopics,
+          },
+          progress: {
+            thisWeek: thisWeekProgress,
+            lastWeek: lastWeekProgress,
+            change: progressChange,
+          },
         },
         performance: {
-          averageScore: Math.round((averageScore._avg.score || 0) * 100) / 100,
+          averageScore: overallProgress,
           bestScore: bestScore
             ? {
                 score: bestScore.score,
@@ -410,18 +608,24 @@ export const getUserStats = async (
                 completedAt: worstScore.completedAt,
               }
             : null,
+          timeSeries: {
+            last7Days: performance7Days,
+            last30Days: performance30Days,
+            last90Days: performance90Days,
+          },
         },
         time: {
-          totalTimeSpent: totalTimeSpent._sum.timeSpent || 0, // seconds
+          totalTimeSpent: totalTimeSpent._sum.timeSpent || 0,
           averageTimeSpent:
-            Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100, // seconds
-          totalTimeSet: totalTimeSet._sum.timer || 0, // seconds
+            Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100,
+          totalTimeSet: totalTimeSet._sum.timer || 0,
           averageTimeSet:
-            Math.round((averageTimeSet._avg.timer || 0) * 100) / 100, // seconds
+            Math.round((averageTimeSet._avg.timer || 0) * 100) / 100,
           timeEfficiency: timeEfficiency
             ? Math.round(timeEfficiency * 100) / 100
-            : null, // percentage
+            : null,
         },
+        topics: topicsProgress,
         attemptsByQuiz: attemptsWithDetails,
         recentAttempts: recentAttempts.map((attempt) => ({
           id: attempt.id,
