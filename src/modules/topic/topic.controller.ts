@@ -63,3 +63,224 @@ export const createTopic = async (
     return res.status(500).json({ error: "Failed to create topic" });
   }
 };
+
+export const updateTopic = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    if (!id || typeof id !== "string") {
+      return res.status(400).json({ error: "Topic ID is required" });
+    }
+
+    if (name !== undefined) {
+      if (typeof name !== "string" || name.trim().length === 0) {
+        return res
+          .status(400)
+          .json({ error: "name must be a non-empty string" });
+      }
+    }
+
+    const topic = await prisma.topic.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+      },
+    });
+
+    if (!topic) {
+      return res.status(404).json({ error: "Topic not found" });
+    }
+
+    if (topic.userId !== req.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You don't have permission to update this topic" });
+    }
+
+    const updatedTopic = await prisma.topic.update({
+      where: { id },
+      data: {
+        ...(name !== undefined && { name: name.trim() }),
+      
+      },
+    });
+
+    return res.json({ topic: updatedTopic });
+  } catch (error: any) {
+    console.error("Update topic error:", error);
+    return res.status(500).json({ error: "Failed to update topic" });
+  }
+};
+
+export const deleteTopic = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
+  try {
+    const { id } = req.params;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    if (!id || typeof id !== "string") {
+      return res.status(400).json({ error: "Topic ID is required" });
+    }
+
+    const topic = await prisma.topic.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        quizzes: {
+          select: {
+            id: true,
+            questions: {
+              select: { id: true },
+            },
+            attempts: {
+              select: { id: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!topic) {
+      return res.status(404).json({ error: "Topic not found" });
+    }
+
+    if (topic.userId !== req.user.id) {
+      return res
+        .status(403)
+        .json({ error: "You don't have permission to delete this topic" });
+    }
+
+    // Collect all related IDs for cascading deletes
+    const quizIds = topic.quizzes.map((q) => q.id);
+    const questionIds = topic.quizzes.flatMap((q) =>
+      q.questions.map((q) => q.id),
+    );
+    const attemptIds = topic.quizzes.flatMap((q) =>
+      q.attempts.map((a) => a.id),
+    );
+
+    // Build transaction operations array
+    const operations: any[] = [];
+
+    // Delete answers from attempts
+    if (attemptIds.length > 0) {
+      operations.push(
+        prisma.answer.deleteMany({
+          where: {
+            attemptId: { in: attemptIds },
+          },
+        }),
+      );
+    }
+
+    // Delete quiz attempts
+    if (quizIds.length > 0) {
+      operations.push(
+        prisma.quizAttempt.deleteMany({
+          where: {
+            quizId: { in: quizIds },
+          },
+        }),
+      );
+    }
+
+    // Delete answers from questions
+    if (questionIds.length > 0) {
+      operations.push(
+        prisma.answer.deleteMany({
+          where: {
+            questionId: { in: questionIds },
+          },
+        }),
+      );
+    }
+
+    // Delete explanations
+    if (questionIds.length > 0) {
+      operations.push(
+        prisma.explanation.deleteMany({
+          where: {
+            questionId: { in: questionIds },
+          },
+        }),
+      );
+    }
+
+    // Delete questions
+    if (quizIds.length > 0) {
+      operations.push(
+        prisma.question.deleteMany({
+          where: {
+            quizId: { in: quizIds },
+          },
+        }),
+      );
+    }
+
+    // Delete quizzes
+    if (quizIds.length > 0) {
+      operations.push(
+        prisma.quiz.deleteMany({
+          where: {
+            topicId: id,
+          },
+        }),
+      );
+    }
+
+    // Delete progress
+    operations.push(
+      prisma.progress.deleteMany({
+        where: {
+          topicId: id,
+        },
+      }),
+    );
+
+    // Delete suggestions
+    operations.push(
+      prisma.suggestion.deleteMany({
+        where: {
+          topicId: id,
+        },
+      }),
+    );
+
+    // Delete topic
+    operations.push(
+      prisma.topic.delete({
+        where: { id },
+      }),
+    );
+
+    // Execute all operations in a transaction
+    await prisma.$transaction(operations);
+
+    return res.json({
+      message: "Topic deleted successfully",
+      deletedTopicId: id,
+      deletedTopicName: topic.name,
+      deletedQuizzesCount: quizIds.length,
+    });
+  } catch (error: any) {
+    console.error("Delete topic error:", error);
+    return res.status(500).json({ error: "Failed to delete topic" });
+  }
+};

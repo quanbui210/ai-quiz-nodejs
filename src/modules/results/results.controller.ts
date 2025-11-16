@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
+import { AttemptStatus } from "@prisma/client";
 
 export const getQuizResult = async (
   req: Request & { user?: any },
@@ -29,6 +30,7 @@ export const getQuizResult = async (
       where: {
         quizId,
         userId: req.user.id,
+        status: AttemptStatus.COMPLETED,
       },
       include: {
         quiz: {
@@ -123,8 +125,11 @@ export const getResult = async (
       return res.status(401).json({ error: "User not authenticated" });
     }
 
-    const attempt = await prisma.quizAttempt.findUnique({
-      where: { id: attemptId },
+    const attempt = await prisma.quizAttempt.findFirst({
+      where: {
+        id: attemptId,
+        status: AttemptStatus.COMPLETED,
+      },
       include: {
         quiz: {
           select: {
@@ -204,6 +209,7 @@ export const listResults = async (
 
     const where: any = {
       userId: req.user.id,
+      status: AttemptStatus.COMPLETED,
     };
 
     if (quizId) {
@@ -282,27 +288,21 @@ export const getUserStats = async (
       await Promise.all([
         prisma.topic.count({ where: { userId } }),
         prisma.quiz.count({ where: { userId } }),
-        prisma.quizAttempt.count({ where: { userId } }),
+        prisma.quizAttempt.count({
+          where: { userId, status: AttemptStatus.COMPLETED },
+        }),
         prisma.question.count({
           where: { quiz: { userId } },
         }),
       ]);
 
-    const [
-      averageScore,
-      bestScore,
-      worstScore,
-      totalTimeSpent,
-      averageTimeSpent,
-      totalTimeSet,
-      averageTimeSet,
-    ] = await Promise.all([
+    const [averageScore, bestScore, worstScore] = await Promise.all([
       prisma.quizAttempt.aggregate({
-        where: { userId },
+        where: { userId, status: AttemptStatus.COMPLETED },
         _avg: { score: true },
       }),
       prisma.quizAttempt.findFirst({
-        where: { userId },
+        where: { userId, status: AttemptStatus.COMPLETED },
         orderBy: { score: "desc" },
         select: {
           score: true,
@@ -311,7 +311,7 @@ export const getUserStats = async (
         },
       }),
       prisma.quizAttempt.findFirst({
-        where: { userId },
+        where: { userId, status: AttemptStatus.COMPLETED },
         orderBy: { score: "asc" },
         select: {
           score: true,
@@ -319,27 +319,44 @@ export const getUserStats = async (
           completedAt: true,
         },
       }),
-      prisma.quizAttempt.aggregate({
-        where: { userId },
-        _sum: { timeSpent: true },
-      }),
-      prisma.quizAttempt.aggregate({
-        where: { userId, timeSpent: { not: null } },
-        _avg: { timeSpent: true },
+    ]);
+
+    const [quizzesWithTimer, timeSetStats] = await Promise.all([
+      prisma.quiz.findMany({
+        where: { userId, timer: { not: null } },
+        select: { id: true },
       }),
       prisma.quiz.aggregate({
         where: { userId, timer: { not: null } },
         _sum: { timer: true },
-      }),
-      prisma.quiz.aggregate({
-        where: { userId, timer: { not: null } },
         _avg: { timer: true },
       }),
     ]);
 
+    const quizIdsWithTimer = quizzesWithTimer.map((q) => q.id);
+    const totalTimeSet = { _sum: { timer: timeSetStats._sum.timer } };
+    const averageTimeSet = { _avg: { timer: timeSetStats._avg.timer } };
+
+    const timeSpentStats =
+      quizIdsWithTimer.length > 0
+        ? await prisma.quizAttempt.aggregate({
+            where: {
+              userId,
+              quizId: { in: quizIdsWithTimer },
+              timeSpent: { not: null },
+              status: AttemptStatus.COMPLETED,
+            },
+            _sum: { timeSpent: true },
+            _avg: { timeSpent: true },
+          })
+        : { _sum: { timeSpent: null }, _avg: { timeSpent: null } };
+
+    const totalTimeSpent = { _sum: { timeSpent: timeSpentStats._sum.timeSpent } };
+    const averageTimeSpent = { _avg: { timeSpent: timeSpentStats._avg.timeSpent } };
+
     const attemptsByDifficulty = await prisma.quizAttempt.groupBy({
       by: ["quizId"],
-      where: { userId },
+      where: { userId, status: AttemptStatus.COMPLETED },
       _count: { id: true },
       _avg: { score: true, timeSpent: true },
     });
@@ -372,7 +389,7 @@ export const getUserStats = async (
     });
 
     const recentAttempts = await prisma.quizAttempt.findMany({
-      where: { userId },
+      where: { userId, status: AttemptStatus.COMPLETED },
       include: {
         quiz: {
           select: {
@@ -387,42 +404,42 @@ export const getUserStats = async (
       take: 10,
     });
 
-    const [
-      thisWeekAttempts,
-      lastWeekAttempts,
-      thisWeekTopics,
-      lastWeekTopics,
-      thisWeekAverageScore,
-      lastWeekAverageScore,
-    ] = await Promise.all([
-      prisma.quizAttempt.count({
-        where: {
-          userId,
-          completedAt: { gte: startOfWeek },
-        },
-      }),
-      prisma.quizAttempt.count({
-        where: {
-          userId,
-          completedAt: { gte: startOfLastWeek, lt: endOfLastWeek },
-        },
-      }),
-      prisma.topic.count({
-        where: {
-          userId,
-          createdAt: { gte: startOfWeek },
-        },
-      }),
-      prisma.topic.count({
-        where: {
-          userId,
-          createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
-        },
-      }),
+    const [thisWeekAttempts, lastWeekAttempts, thisWeekTopics, lastWeekTopics] =
+      await Promise.all([
+        prisma.quizAttempt.count({
+          where: {
+            userId,
+            completedAt: { gte: startOfWeek },
+            status: AttemptStatus.COMPLETED,
+          },
+        }),
+        prisma.quizAttempt.count({
+          where: {
+            userId,
+            completedAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+            status: AttemptStatus.COMPLETED,
+          },
+        }),
+        prisma.topic.count({
+          where: {
+            userId,
+            createdAt: { gte: startOfWeek },
+          },
+        }),
+        prisma.topic.count({
+          where: {
+            userId,
+            createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+          },
+        }),
+      ]);
+
+    const [thisWeekAverageScore, lastWeekAverageScore] = await Promise.all([
       prisma.quizAttempt.aggregate({
         where: {
           userId,
           completedAt: { gte: startOfWeek },
+          status: AttemptStatus.COMPLETED,
         },
         _avg: { score: true },
       }),
@@ -430,6 +447,7 @@ export const getUserStats = async (
         where: {
           userId,
           completedAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+          status: AttemptStatus.COMPLETED,
         },
         _avg: { score: true },
       }),
@@ -441,7 +459,7 @@ export const getUserStats = async (
         quizzes: {
           include: {
             attempts: {
-              where: { userId },
+              where: { userId, status: AttemptStatus.COMPLETED },
               select: {
                 score: true,
                 completedAt: true,
@@ -461,11 +479,11 @@ export const getUserStats = async (
       const allScores = allQuizzes.flatMap((q) => q.attempts.map((a) => a.score));
       const averageScore =
         allScores.length > 0
-          ? allScores.reduce((sum: number, score: number) => sum + score, 0) / allScores.length
+          ? (allScores?.reduce((sum: number | null, score: number | null) => sum ? sum + (score || 0) : 0, 0) || 0) / allScores.length
           : 0;
 
       const allAttemptDates = allQuizzes
-        .flatMap((q) => q.attempts.map((a) => a.completedAt))
+        .flatMap((q: { attempts: any[]; }) => q.attempts.map((a) => a.completedAt))
         .filter((date): date is Date => date !== null);
 
       return {
@@ -496,6 +514,7 @@ export const getUserStats = async (
             gte: startDate,
             lte: endDate,
           },
+          status: AttemptStatus.COMPLETED,
         },
         select: {
           score: true,
@@ -513,7 +532,7 @@ export const getUserStats = async (
             if (!dailyData[dateKey]) {
               dailyData[dateKey] = [];
             }
-            dailyData[dateKey].push(attempt.score);
+            dailyData[dateKey].push(attempt.score || 0);
           }
         }
       });
@@ -554,9 +573,9 @@ export const getUserStats = async (
         getTimeSeriesData(90),
       ]);
 
-    const overallProgress = Math.round((averageScore._avg.score || 0) * 100) / 100;
-    const thisWeekProgress = Math.round((thisWeekAverageScore._avg.score || 0) * 100) / 100;
-    const lastWeekProgress = Math.round((lastWeekAverageScore._avg.score || 0) * 100) / 100;
+    const overallProgress = Math.round((averageScore._avg?.score || 0) * 100) / 100;
+    const thisWeekProgress = Math.round((thisWeekAverageScore._avg?.score || 0) * 100) / 100;
+    const lastWeekProgress = Math.round((lastWeekAverageScore._avg?.score || 0) * 100) / 100;
     const progressChange = thisWeekProgress - lastWeekProgress;
 
     const timeEfficiency =

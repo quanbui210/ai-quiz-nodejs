@@ -9,6 +9,8 @@ import {
   validateQuizTopic,
   listQuizzes,
   deleteQuiz,
+  pauseQuiz,
+  resumeQuiz,
 } from "./quiz.controller";
 
 const router = Router();
@@ -187,11 +189,13 @@ router.post("/validate-topic", authenticate, validateQuizTopic);
  *                 type: number
  *                 description: Number of questions to generate
  *                 minimum: 1
- *                 maximum: 20
- *                 default: 10
+ *                 maximum: 50
+ *                 default: 15
  *               timer:
  *                 type: number
- *                 description: Timer in seconds (optional)
+ *                 nullable: true
+ *                 description: Timer in seconds. Set to null or omit to create quiz without timer. Default is 15 minutes (900 seconds).
+ *                 example: 900
  *     responses:
  *       201:
  *         description: Quiz created successfully (without correct answers)
@@ -382,6 +386,10 @@ router.delete("/:id", authenticate, deleteQuiz);
  *                 type: number
  *                 description: Time spent on quiz in seconds (optional)
  *                 example: 300
+ *               attemptId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: Optional attempt ID when resuming a paused quiz. If provided, the existing attempt will be updated and marked as completed.
  *     responses:
  *       200:
  *         description: Quiz results with correct answers
@@ -412,5 +420,171 @@ router.delete("/:id", authenticate, deleteQuiz);
  *               $ref: "#/components/schemas/Error"
  */
 router.post("/:quizId/submit", authenticate, submitAnswers);
+
+/**
+ * @swagger
+ * /api/v1/quiz/{quizId}/pause:
+ *   post:
+ *     summary: Pause a quiz attempt and save current progress
+ *     description: Saves the current answers and elapsed time, allowing the user to resume later. The timer is paused.
+ *     tags: [Quizzes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: quizId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Quiz ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - answers
+ *             properties:
+ *               answers:
+ *                 type: array
+ *                 description: Array of current answers (can be partial)
+ *                 items:
+ *                   type: object
+ *                   required:
+ *                     - questionId
+ *                     - userAnswer
+ *                   properties:
+ *                     questionId:
+ *                       type: string
+ *                       format: uuid
+ *                     userAnswer:
+ *                       type: string
+ *                 example:
+ *                   - questionId: "123e4567-e89b-12d3-a456-426614174000"
+ *                     userAnswer: "Option A"
+ *                   - questionId: "123e4567-e89b-12d3-a456-426614174001"
+ *                     userAnswer: "Option B"
+ *               elapsedTime:
+ *                 type: number
+ *                 description: Time elapsed so far in seconds (for timer)
+ *                 example: 300
+ *     responses:
+ *       200:
+ *         description: Quiz paused successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Quiz paused successfully"
+ *                 attemptId:
+ *                   type: string
+ *                   format: uuid
+ *                 quizId:
+ *                   type: string
+ *                   format: uuid
+ *                 status:
+ *                   type: string
+ *                   enum: [PAUSED]
+ *                 pausedAt:
+ *                   type: string
+ *                   format: date-time
+ *                 elapsedTime:
+ *                   type: number
+ *                 answeredQuestions:
+ *                   type: number
+ *                 totalQuestions:
+ *                   type: number
+ *                 savedAnswers:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       400:
+ *         description: Invalid request
+ *       404:
+ *         description: Quiz not found
+ *       500:
+ *         description: Server error
+ */
+router.post("/:quizId/pause", authenticate, pauseQuiz);
+
+/**
+ * @swagger
+ * /api/v1/quiz/{quizId}/resume:
+ *   get:
+ *     summary: Resume a paused quiz attempt
+ *     description: Retrieves a paused quiz attempt with saved answers and elapsed time, allowing the user to continue from where they left off.
+ *     tags: [Quizzes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: quizId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Quiz ID
+ *     responses:
+ *       200:
+ *         description: Quiz resumed successfully with saved progress
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 attemptId:
+ *                   type: string
+ *                   format: uuid
+ *                 quizId:
+ *                   type: string
+ *                   format: uuid
+ *                 quizTitle:
+ *                   type: string
+ *                 status:
+ *                   type: string
+ *                   enum: [IN_PROGRESS]
+ *                 elapsedTime:
+ *                   type: number
+ *                   description: Time elapsed before pause (in seconds)
+ *                 totalQuestions:
+ *                   type: number
+ *                 answeredQuestions:
+ *                   type: number
+ *                 questions:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       text:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                       options:
+ *                         type: object
+ *                       savedAnswer:
+ *                         type: string
+ *                         nullable: true
+ *       404:
+ *         description: No paused attempt found for this quiz
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                 message:
+ *                   type: string
+ *       500:
+ *         description: Server error
+ */
+router.get("/:quizId/resume", authenticate, resumeQuiz);
 
 export default router;

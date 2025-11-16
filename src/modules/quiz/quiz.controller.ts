@@ -6,6 +6,7 @@ import {
   Difficulty,
   QuestionType,
   QuizStatus,
+  AttemptStatus,
   Quiz,
   Question,
   Prisma,
@@ -134,7 +135,7 @@ export const validateQuizTopic = async (req: Request, res: Response) => {
 
     const response = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
-      temperature: 0.3, // Lower temperature for consistent validation
+      temperature: 0.3,
       messages: [
         {
           role: "system",
@@ -213,115 +214,71 @@ interface ParsedQuiz {
 
 function parseQuizResponse(quizText: string): ParsedQuiz | null {
   try {
-    const titleMatch = quizText.match(/- Title:\s*(.+)/i);
+    const titleMatch = quizText.match(/^###\s*(.+?)(?:\n|$)/);
     const title = titleMatch ? titleMatch[1]?.trim() : "Untitled Quiz";
 
     const difficultyMatch = quizText.match(
-      /- Difficulty:\s*(BEGINNER|INTERMEDIATE|ADVANCED)/i,
+      /-?\s*Difficulty:\s*(BEGINNER|INTERMEDIATE|ADVANCED)/i,
     );
     const difficulty =
       (difficultyMatch?.[1]?.toUpperCase() as Difficulty) ||
       Difficulty.INTERMEDIATE;
 
-    const topicMatch = quizText.match(/- Topic:\s*(.+)/i);
+    const topicMatch = quizText.match(/-?\s*Topic:\s*(.+?)(?:\n|$)/i);
     const topic = topicMatch ? topicMatch[1]?.trim() : "";
 
-    const questionsSection = quizText.match(
-      /Questions?:([\s\S]*?)(?:Options?:|Correct Answers?:|Explanations?:|Explanation?:)/i,
+    const questionBlocks = quizText.match(
+      /###\s+Question\s+\d+[\s\S]*?(?=###\s+Question\s+\d+|$)/g,
     );
-    const questionsText = questionsSection ? questionsSection[1] : "";
 
-    const optionsSection = quizText.match(
-      /Options?:([\s\S]*?)(?:Correct Answers?:|Explanations?:|Explanation?:)/i,
-    );
-    const optionsText = optionsSection ? optionsSection[1] : "";
-
-    const correctAnswersSection = quizText.match(
-      /Correct Answers?:([\s\S]*?)(?:Explanations?:|Explanation?:|Difficulty?:)/i,
-    );
-    const correctAnswersText = correctAnswersSection
-      ? correctAnswersSection[1]
-      : "";
-
-
-    let explanationLines: string[] = [];
-    
-    const explanationsIndex = quizText.search(/-?\s*Explanations?:?\s*\n/i);
-    if (explanationsIndex !== -1) {
-      const afterExplanations = quizText.substring(explanationsIndex);
-      const explanationsText = afterExplanations.replace(/^-?\s*Explanations?:?\s*\n/i, '').trim();
-      
-      const allMatches = Array.from(explanationsText.matchAll(/(\d+)\.\s*([^\n]+)/g));
-      for (const match of allMatches) {
-        if (match[2]) {
-          explanationLines.push(match[2].trim());
-        }
-      }
+    if (!questionBlocks || questionBlocks.length === 0) {
+      console.error("No questions found in quiz response");
+      return null;
     }
-
-    const questionLines = questionsText
-      ? questionsText
-          .split(/\d+\./)
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0 && !line.match(/^Questions?:/i))
-      : [];
-    
-    if (explanationLines.length > 0 && questionLines.length > 0 && explanationLines.length !== questionLines.length) {
-      console.warn(`Mismatch: Found ${explanationLines.length} explanations but ${questionLines.length} questions. Some questions may have missing explanations.`);
-    }
-
-    const optionLines = optionsText
-      ? optionsText
-          .split(/\d+\./)
-          .map((line) => line.trim())
-          .filter((line) => line.length > 0 && !line.match(/^Options?:/i))
-      : [];
-
-    const correctAnswerLines = correctAnswersText
-      ? correctAnswersText
-          .split(/\d+\./)
-          .map((line) => line.trim())
-          .filter(
-            (line) => line.length > 0 && !line.match(/^Correct Answers?:/i),
-          )
-      : [];
-
-    const allOptions = optionLines.filter((opt) => opt.length > 0);
 
     const OPTIONS_PER_QUESTION = 4;
-    const questionCount = questionLines.length;
+    const questions = questionBlocks
+      .map((block, index) => {
+        const questionHeaderMatch = block.match(/###\s+Question\s+\d+\s*\n/);
+        if (!questionHeaderMatch) {
+          console.warn(`Question ${index + 1} has no header. Skipping.`);
+          return null;
+        }
 
-    const expectedOptions = questionCount * OPTIONS_PER_QUESTION;
-    if (allOptions.length < expectedOptions) {
-      console.warn(
-        `Expected ${expectedOptions} options but got ${allOptions.length}. Some questions may have incomplete options.`,
-      );
-    }
+        const questionTextMatch = block.match(/###\s+Question\s+\d+\s*\n(.+?)(?=\n[A-D]\))/s);
+        const questionText = questionTextMatch ? questionTextMatch[1]?.trim() : "";
 
-    const questions = questionLines
-      .map((questionText, index) => {
-        const text = questionText.trim();
+        if (!questionText) {
+          console.warn(`Question ${index + 1} has no text. Skipping.`);
+          return null;
+        }
 
-        const startIndex = index * OPTIONS_PER_QUESTION;
-        const endIndex = startIndex + OPTIONS_PER_QUESTION;
-        const questionOptions = allOptions.slice(startIndex, endIndex);
+        const optionMatches = Array.from(block.matchAll(/^([A-D])\)\s*(.+?)(?=\n[A-D]\)|\n\n|✅|Explanation:|$)/gm));
+        const options: string[] = [];
+        const optionMap: { [key: string]: string } = {};
 
-        const correct = correctAnswerLines[index]?.trim() || "";
-        
-        const explanation = explanationLines[index]?.trim() || "";
+        for (const match of optionMatches) {
+          const letter = match[1];
+          const optionText = match[2]?.trim() || "";
+          
+          if (letter && optionText) {
+            options.push(optionText);
+            optionMap[letter] = optionText;
+          }
+        }
 
-        if (questionOptions.length < OPTIONS_PER_QUESTION) {
+        if (options.length < OPTIONS_PER_QUESTION) {
           console.warn(
-            `Question ${index + 1} has only ${questionOptions.length} options (expected ${OPTIONS_PER_QUESTION}). Skipping this question.`,
+            `Question ${index + 1} has only ${options.length} options (expected ${OPTIONS_PER_QUESTION}). Skipping this question.`,
           );
           return null;
         }
 
-        const validOptions = questionOptions
+        const validOptions = options
           .slice(0, OPTIONS_PER_QUESTION)
           .map(opt => opt.trim())
           .filter(opt => opt.length > 0);
-        
+
         if (validOptions.length < OPTIONS_PER_QUESTION) {
           console.warn(
             `Question ${index + 1} has ${validOptions.length} valid options (expected ${OPTIONS_PER_QUESTION}). Skipping this question.`,
@@ -329,19 +286,64 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           return null;
         }
 
-        const normalizedCorrect = correct.trim().replace(/\s+/g, ' ');
+        const correctAnswerMatch = block.match(/✅\s*Correct answer:\s*([A-D])\)\s*(.+?)(?=\n|$)/);
+        let correctAnswer = "";
+        
+        if (correctAnswerMatch && correctAnswerMatch[1]) {
+          const answerLetter = correctAnswerMatch[1];
+          const answerText = correctAnswerMatch[2]?.trim();
+          
+          if (answerLetter && optionMap[answerLetter]) {
+            correctAnswer = optionMap[answerLetter];
+          } else if (answerText) {
+            correctAnswer = answerText;
+          }
+        }
+
+        if (!correctAnswer) {
+          console.warn(
+            `Question ${index + 1} has no correct answer marked. Skipping this question.`,
+          );
+          return null;
+        }
+
+        const explanationMatch = block.match(/Explanation:\s*(.+?)(?=\n\n|###|$)/s);
+        const explanation = explanationMatch ? explanationMatch[1]?.trim() : "";
+
+        const normalizedCorrect = correctAnswer.trim().replace(/\s+/g, " ");
+
+        const correctMatchesOption = validOptions.some(
+          (opt) =>
+            opt.toLowerCase().trim() === normalizedCorrect.toLowerCase().trim() ||
+            opt.toLowerCase().trim().includes(normalizedCorrect.toLowerCase().trim()) ||
+            normalizedCorrect.toLowerCase().trim().includes(opt.toLowerCase().trim())
+        );
+
+        if (!correctMatchesOption) {
+          console.warn(
+            `Question ${index + 1}: Correct answer "${normalizedCorrect}" doesn't match any option. Options: ${validOptions.join(", ")}`
+          );
+        }
 
         return {
-          text: text || "",
+          text: questionText,
           type: QuestionType.MULTIPLE_CHOICE,
           options: validOptions,
           correct: normalizedCorrect,
-          explanation: explanation.length > 0 ? explanation : undefined,
+          explanation: explanation && explanation.length > 0 ? explanation : undefined,
         };
       })
-      .filter((q): q is NonNullable<typeof q> => 
-        q !== null && q.text.length > 0 && q.options.length === OPTIONS_PER_QUESTION
+      .filter((q): q is NonNullable<typeof q> =>
+        q !== null &&
+        q.text.length > 0 &&
+        q.options.length === OPTIONS_PER_QUESTION &&
+        q.correct.length > 0
       );
+
+    if (questions.length === 0) {
+      console.error("No valid questions parsed from quiz response");
+      return null;
+    }
 
     return {
       title: title || "Untitled Quiz",
@@ -412,22 +414,23 @@ export const testCreateQuiz = async (req: Request, res: Response) => {
 export const createQuiz = async (req: Request & { user?: any }, res: Response) => {
   try {
     const {
-      topic,
+      title,
       difficulty,
       questionCount,
       quizType,
       timer,
       topicId,
+      topic
     } = req.body;
 
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
     }
 
-    if (!topic || typeof topic !== "string" || topic.trim().length === 0) {
+    if (!title || typeof title !== "string" || title.trim().length === 0) {
       return res
         .status(400)
-        .json({ error: "topic is required and must be a non-empty string" });
+        .json({ error: "title is required and must be a non-empty string" });
     }
     if (!difficulty || !Object.values(Difficulty).includes(difficulty)) {
       return res.status(400).json({
@@ -454,82 +457,72 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
     }
 
     const response = await client.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      temperature: 0.2,
+      model: "gpt-4-turbo", 
+      temperature: 0.1,
       messages: [
         {
           role: "system",
-          content: `You are a quiz creator assistant. Create a ${difficulty} level quiz with exactly ${questionCount} questions about "${topic}".
+          content: `You are a quiz generation assistant. You MUST follow this EXACT format for every question. No variations allowed.
 
-Return the quiz in this EXACT format:
-- Title: [Quiz Title]
-- Questions:
-  1. [Question 1]
-  2. [Question 2]
-  ... (exactly ${questionCount} questions)
-- Options:
-  1. [Option A for Q1]
-  2. [Option B for Q1]
-  3. [Option C for Q1]
-  4. [Option D for Q1]
-  5. [Option A for Q2]
-  6. [Option B for Q2]
-  7. [Option C for Q2]
-  8. [Option D for Q2]
-  ... (exactly ${questionCount * 4} options total: 4 options × ${questionCount} questions)
-- Correct Answers:
-  1. [Correct answer for Q1 - copy EXACTLY from one of options 1-4]
-  2. [Correct answer for Q2 - copy EXACTLY from one of options 5-8]
-  ... (exactly ${questionCount} correct answers)
-- Explanations:
-  1. [Explanation for Q1]
-  2. [Explanation for Q2]
-  ... (exactly ${questionCount} explanations - one per question)
-- Difficulty: ${difficulty}
-- Topic: ${topic}
+          CRITICAL FORMAT REQUIREMENTS - FOLLOW EXACTLY:
 
-CRITICAL RULES:
-1. You MUST create exactly ${questionCount} questions - no more, no less
-2. Each question MUST have exactly 4 options - total of ${questionCount * 4} options numbered 1 through ${questionCount * 4}
-3. Correct answers MUST be copied EXACTLY from the Options section - same text, word for word, same capitalization, same punctuation. DO NOT create new text that is not in the options.
-4. You MUST provide exactly ${questionCount} explanations - numbered 1 through ${questionCount}, one per question
-5. For each question, the correct answer MUST be one of the 4 options you listed for that question. Look at the options for that question and copy one of them exactly.
-6. If you cannot follow this format exactly, do not create the quiz
+          For each question, use this EXACT structure:
 
-EXAMPLE (2 questions = 8 options, 2 correct answers, 2 explanations):
-- Options:
-  1. Amazon S3
-  2. Amazon EC2
-  3. Amazon RDS
-  4. Amazon Lambda
-  5. CloudFront
-  6. Route 53
-  7. VPC
-  8. IAM
-- Correct Answers:
-  1. Amazon S3
-  2. Route 53
-- Explanations:
-  1. Amazon S3 is a scalable object storage service...
-  2. Route 53 is AWS's DNS web service...`,
+          ### Question [NUMBER]
+          [Question text here]
+
+          A) [First option text]
+          B) [Second option text]
+          C) [Third option text]
+          D) [Fourth option text]
+          ✅ Correct answer: [LETTER]) [EXACT OPTION TEXT FROM ABOVE]
+
+          Explanation: [Explanation text here]
+
+          EXAMPLE (copy this structure exactly):
+
+          ### Question 1
+          What is 2 + 2?
+
+          A) 3
+          B) 4
+          C) 5
+          D) 6
+          ✅ Correct answer: B) 4
+
+          Explanation: 2 + 2 equals 4, which is basic arithmetic.
+
+          ### Question 2
+          What is the capital of France?
+
+          A) London
+          B) Berlin
+          C) Paris
+          D) Madrid
+          ✅ Correct answer: C) Paris
+
+          Explanation: Paris is the capital and largest city of France.
+
+          STRICT RULES - VIOLATIONS WILL CAUSE ERRORS:
+          1. Each question MUST start with "### Question [NUMBER]" (use ###, not **)
+          2. Question text MUST be on the line immediately after the header
+          3. You MUST have exactly 4 options: A), B), C), D) - NO MORE, NO LESS
+          4. Each option MUST be on its own line starting with the letter and )
+          5. The correct answer line MUST be: "✅ Correct answer: [LETTER]) [EXACT TEXT]" where [LETTER] is A, B, C, or D
+          6. The correct answer text MUST match EXACTLY one of the option texts above (case-sensitive, word-for-word)
+          7. The explanation MUST start with "Explanation: " (not "**Explanation:**" or "*Explanation*")
+          8. Leave a blank line between each question block
+          9. Do NOT add any title, header, or extra text before Question 1
+          10. Do NOT add any closing text after the last question
+
+          IMPORTANT: The correct answer format is "✅ Correct answer: B) 4" where "B" is the letter and "4" is the EXACT text from option B above.`,
         },
         {
           role: "user",
-          content: `Create a ${difficulty} level quiz about "${topic}" with ${questionCount} multiple choice questions.
-
-CRITICAL REQUIREMENTS:
-1. You MUST create exactly ${questionCount} questions - no more, no less
-2. Each question MUST have exactly 4 options - total of ${questionCount * 4} options numbered 1 through ${questionCount * 4}
-3. Correct answers MUST be copied EXACTLY word-for-word from one of the options in the Options section - same text, same capitalization, same punctuation
-4. You MUST provide exactly ${questionCount} explanations - numbered 1 through ${questionCount}, one per question
-5. DO NOT create correct answers that are not in the options list
-6. DO NOT paraphrase or modify the correct answer text - it must match an option EXACTLY
-
-The correct answer for each question must be one of the 4 options you provided for that question. Copy it exactly as it appears in the Options section.`,
+          content: `Create exactly ${questionCount} ${difficulty} level multiple-choice questions about "${title}" of topic "${topic}". Follow the format EXACTLY as shown in the example. Start with "### Question 1" and end with the explanation for Question ${questionCount}.`,
         },
       ],
     });
-
     const quizText = response.choices[0]?.message?.content;
     if (!quizText) {
       return res.status(400).json({ error: "No quiz generated" });
@@ -624,11 +617,11 @@ The correct answer for each question must be one of the 4 options you provided f
 
     const quiz = await prisma.quiz.create({
       data: {
-        title: parsedQuiz.title,
+        title: title.trim(),
         type: (quizType as QuizType) || QuizType.MULTIPLE_CHOICE,
         difficulty: parsedQuiz.difficulty,
         count: parsedQuiz.questions.length,
-        timer: timer || null,
+        timer: timer !== undefined && timer !== null && timer > 0 ? Number(timer) : null,
         status: QuizStatus.PENDING,
         topicId,
         userId: req.user.id,
@@ -738,7 +731,7 @@ export const getQuiz = async (req: Request, res: Response) => {
 export const submitAnswers = async (req: Request & { user?: any }, res: Response) => {
   try {
     const { quizId } = req.params;
-    const { answers, timeSpent } = req.body;
+    const { answers, timeSpent, attemptId } = req.body;
 
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
@@ -792,42 +785,116 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
     const totalQuestions = quiz.questions.length;
     const score = (correctCount / totalQuestions) * 100;
 
-    const attempt = await prisma.quizAttempt.create({
-      data: {
-        quizId: quiz.id,
-        userId: req.user.id,
-        score: Math.round(score * 100) / 100,
-        correctCount,
-        totalQuestions,
-        timeSpent: timeSpent ? Number(timeSpent) : null,
-        answers: {
-          create: answers.map((answer: { questionId: string; userAnswer: string }) => {
-            const question = quiz.questions.find((q) => q.id === answer.questionId);
-            const isCorrect =
-              question?.correct?.toLowerCase().trim() ===
-              answer.userAnswer.toLowerCase().trim();
-
-            return {
-              questionId: answer.questionId,
-              userId: req.user.id,
-              userAnswer: answer.userAnswer,
-              isCorrect: isCorrect || false,
-            };
-          }),
+    // If attemptId is provided, update existing attempt (resuming paused quiz)
+    // Otherwise, create a new attempt
+    let attempt;
+    if (attemptId) {
+      // Verify the attempt belongs to the user and is in progress/paused
+      const existingAttempt = await prisma.quizAttempt.findFirst({
+        where: {
+          id: attemptId,
+          quizId: quiz.id,
+          userId: req.user.id,
+          status: {
+            in: [AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED],
+          },
         },
-      },
-      include: {
-        answers: {
-          include: {
-            question: {
-              include: {
-                explanation: true,
+      });
+
+      if (!existingAttempt) {
+        return res.status(404).json({
+          error: "Attempt not found or already completed",
+        });
+      }
+
+      // Delete old answers
+      await prisma.answer.deleteMany({
+        where: {
+          attemptId: attemptId,
+        },
+      });
+
+      // Update attempt with final answers and mark as completed
+      attempt = await prisma.quizAttempt.update({
+        where: { id: attemptId },
+        data: {
+          status: AttemptStatus.COMPLETED,
+          score: Math.round(score * 100) / 100,
+          correctCount,
+          totalQuestions,
+          timeSpent: timeSpent ? Number(timeSpent) : null,
+          elapsedTime: null, // Clear elapsed time on completion
+          completedAt: new Date(),
+          pausedAt: null,
+          answers: {
+            create: answers.map((answer: { questionId: string; userAnswer: string }) => {
+              const question = quiz.questions.find((q) => q.id === answer.questionId);
+              const isCorrect =
+                question?.correct?.toLowerCase().trim() ===
+                answer.userAnswer.toLowerCase().trim();
+
+              return {
+                questionId: answer.questionId,
+                userId: req.user.id,
+                userAnswer: answer.userAnswer,
+                isCorrect: isCorrect || false,
+              };
+            }),
+          },
+        },
+        include: {
+          answers: {
+            include: {
+              question: {
+                include: {
+                  explanation: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
+    } else {
+      // Create new attempt
+      attempt = await prisma.quizAttempt.create({
+        data: {
+          quizId: quiz.id,
+          userId: req.user.id,
+          status: AttemptStatus.COMPLETED,
+          score: Math.round(score * 100) / 100,
+          correctCount,
+          totalQuestions,
+          timeSpent: timeSpent ? Number(timeSpent) : null,
+          completedAt: new Date(),
+          answers: {
+            create: answers.map((answer: { questionId: string; userAnswer: string }) => {
+              const question = quiz.questions.find((q) => q.id === answer.questionId);
+              const isCorrect =
+                question?.correct?.toLowerCase().trim() ===
+                answer.userAnswer.toLowerCase().trim();
+
+              return {
+                questionId: answer.questionId,
+                userId: req.user.id,
+                userAnswer: answer.userAnswer,
+                isCorrect: isCorrect || false,
+              };
+            }),
+          },
+        },
+        include: {
+          answers: {
+            include: {
+              question: {
+                include: {
+                  explanation: true,
+                },
+              },
+            },
+          },
+        },
+      });
+    }
 
 -    await prisma.quiz.update({
       where: { id: quizId },
@@ -850,6 +917,245 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
     return res
       .status(500)
       .json({ error: "Failed to submit answers", message: error.message });
+  }
+};
+
+// Pause a quiz attempt - save current progress
+export const pauseQuiz = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const { quizId } = req.params;
+    const { answers, elapsedTime } = req.body;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    if (!answers || !Array.isArray(answers)) {
+      return res.status(400).json({ error: "answers array is required" });
+    }
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        questions: true,
+      },
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ error: "Quiz not found" });
+    }
+
+    // Check if there's an existing in-progress or paused attempt
+    const existingAttempt = await prisma.quizAttempt.findFirst({
+      where: {
+        quizId: quiz.id,
+        userId: req.user.id,
+        status: {
+          in: [AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED],
+        },
+      },
+      include: {
+        answers: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    // Delete existing answers for this attempt if resuming
+    if (existingAttempt) {
+      await prisma.answer.deleteMany({
+        where: {
+          attemptId: existingAttempt.id,
+        },
+      });
+    }
+
+    // Create or update the attempt
+    const attempt = existingAttempt
+      ? await prisma.quizAttempt.update({
+          where: { id: existingAttempt.id },
+          data: {
+            status: AttemptStatus.PAUSED,
+            pausedAt: new Date(),
+            elapsedTime: elapsedTime ? Number(elapsedTime) : null,
+            totalQuestions: quiz.questions.length,
+            answers: {
+              create: answers.map((answer: { questionId: string; userAnswer: string }) => ({
+                questionId: answer.questionId,
+                userId: req.user.id,
+                userAnswer: answer.userAnswer,
+                isCorrect: false, // Will be calculated on completion
+              })),
+            },
+          },
+          include: {
+            answers: {
+              include: {
+                question: {
+                  select: {
+                    id: true,
+                    text: true,
+                  },
+                },
+              },
+            },
+          },
+        })
+      : await prisma.quizAttempt.create({
+          data: {
+            quizId: quiz.id,
+            userId: req.user.id,
+            status: AttemptStatus.PAUSED,
+            pausedAt: new Date(),
+            elapsedTime: elapsedTime ? Number(elapsedTime) : null,
+            totalQuestions: quiz.questions.length,
+            answers: {
+              create: answers.map((answer: { questionId: string; userAnswer: string }) => ({
+                questionId: answer.questionId,
+                userId: req.user.id,
+                userAnswer: answer.userAnswer,
+                isCorrect: false, 
+              })),
+            },
+          },
+          include: {
+            answers: {
+              include: {
+                question: {
+                  select: {
+                    id: true,
+                    text: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+    return res.json({
+      message: "Quiz paused successfully",
+      attemptId: attempt.id,
+      quizId: quiz.id,
+      status: attempt.status,
+      pausedAt: attempt.pausedAt,
+      elapsedTime: attempt.elapsedTime,
+      answeredQuestions: attempt.answers.length,
+      totalQuestions: attempt.totalQuestions,
+      savedAnswers: attempt.answers.map((a) => ({
+        questionId: a.questionId,
+        questionText: a.question.text,
+        userAnswer: a.userAnswer,
+      })),
+    });
+  } catch (error: any) {
+    console.error("Pause quiz error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to pause quiz", message: error.message });
+  }
+};
+
+// Resume a paused quiz attempt
+export const resumeQuiz = async (req: Request & { user?: any }, res: Response) => {
+  try {
+    const { quizId } = req.params;
+
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    const quiz = await prisma.quiz.findUnique({
+      where: { id: quizId },
+      include: {
+        questions: {
+          select: {
+            id: true,
+            text: true,
+            type: true,
+            options: true,
+          },
+        },
+      },
+    });
+
+    if (!quiz) {
+      return res.status(404).json({ error: "Quiz not found" });
+    }
+
+    // Find the most recent paused or in-progress attempt
+    const attempt = await prisma.quizAttempt.findFirst({
+      where: {
+        quizId: quiz.id,
+        userId: req.user.id,
+        status: {
+          in: [AttemptStatus.IN_PROGRESS, AttemptStatus.PAUSED],
+        },
+      },
+      include: {
+        answers: {
+          include: {
+            question: {
+              select: {
+                id: true,
+                text: true,
+                type: true,
+                options: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!attempt) {
+      return res.status(404).json({
+        error: "No paused attempt found for this quiz",
+        message: "Start a new quiz attempt",
+      });
+    }
+
+    // Update status to IN_PROGRESS if it was PAUSED
+    if (attempt.status === AttemptStatus.PAUSED) {
+      await prisma.quizAttempt.update({
+        where: { id: attempt.id },
+        data: {
+          status: AttemptStatus.IN_PROGRESS,
+          pausedAt: null,
+        },
+      });
+    }
+
+    // Map saved answers by questionId for easy lookup
+    const savedAnswersMap = new Map(
+      attempt.answers.map((a) => [a.questionId, a.userAnswer])
+    );
+
+    // Return quiz with saved answers
+    return res.json({
+      attemptId: attempt.id,
+      quizId: quiz.id,
+      quizTitle: quiz.title,
+      status: AttemptStatus.IN_PROGRESS,
+      elapsedTime: attempt.elapsedTime,
+      totalQuestions: attempt.totalQuestions,
+      answeredQuestions: attempt.answers.length,
+      questions: quiz.questions.map((q) => ({
+        id: q.id,
+        text: q.text,
+        type: q.type,
+        options: q.options,
+        savedAnswer: savedAnswersMap.get(q.id) || null,
+      })),
+    });
+  } catch (error: any) {
+    console.error("Resume quiz error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to resume quiz", message: error.message });
   }
 };
 
