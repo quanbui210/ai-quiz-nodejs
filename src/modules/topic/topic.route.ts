@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
+import { checkTopicLimit } from "../../middleware/limit-check.middleware";
 import {
   createTopic,
   getTopic,
@@ -105,7 +106,7 @@ router.get("/:id", getTopic);
  *             schema:
  *               $ref: "#/components/schemas/Error"
  */
-router.post("/create", authenticate, createTopic);
+router.post("/create", authenticate, checkTopicLimit, createTopic);
 
 /**
  * @swagger

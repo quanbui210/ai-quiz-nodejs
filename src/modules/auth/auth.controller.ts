@@ -8,7 +8,6 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
     const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
     const redirectUrl = (redirectTo as string) || `${backendUrl}/callback.html`;
 
-    console.log("Initiating Google OAuth with redirectTo:", redirectUrl);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -22,7 +21,6 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       },
     });
 
-    console.log("OAuth response:", { data, error });
 
     if (error || !data?.url) {
       return res
@@ -112,13 +110,43 @@ export const handleCallback = async (req: Request, res: Response) => {
             avatarUrl: sessionData.user.user_metadata?.avatar_url as string,
           },
         });
+
+        try {
+          const { getOrCreateDefaultSubscription } = await import(
+            "../../utils/subscription"
+          );
+          await getOrCreateDefaultSubscription(supabaseUserId);
+        } catch (subscriptionError: any) {
+          console.error("Failed to initialize subscription:", subscriptionError);
+        }
       }
 
-      return res.json({
+      const adminProfile = await prisma.adminUser.findUnique({
+        where: { userId: supabaseUserId },
+        select: {
+          id: true,
+          role: true,
+          permissions: true,
+        },
+      });
+
+      const response: any = {
         message: "Authentication successful, user created",
         user: sessionData.user,
         session: sessionData.session,
-      });
+      };
+
+      if (adminProfile) {
+        response.isAdmin = true;
+        response.admin = {
+          role: adminProfile.role,
+          permissions: adminProfile.permissions,
+        };
+      } else {
+        response.isAdmin = false;
+      }
+
+      return res.json(response);
     }
 
     const { code, access_token, error: oauthError } = req.query;
@@ -136,11 +164,63 @@ export const handleCallback = async (req: Request, res: Response) => {
         return res.status(400).json({ error: error.message });
       }
 
-      return res.json({
-        message: "Authentication successful",
-        user: data.user,
-        session: data.session,
-      });
+      const userId = data.user.id;
+      
+      try {
+        let adminProfile = null;
+        try {
+          adminProfile = await prisma.adminUser.findUnique({
+            where: { userId },
+            select: {
+              id: true,
+              role: true,
+              permissions: true,
+            },
+          });
+        } catch (adminError: any) {
+          console.error("Failed to check admin status:", adminError);
+        }
+
+        const response: any = {
+          message: "Authentication successful",
+          user: data.user,
+          session: data.session,
+        };
+
+        if (adminProfile) {
+          response.isAdmin = true;
+          response.admin = {
+            role: adminProfile.role,
+            permissions: adminProfile.permissions,
+          };
+        } else {
+          response.isAdmin = false;
+        }
+
+        return res.json(response);
+      } catch (dbError: any) {
+        console.error("Database error during OAuth callback:", dbError);
+        
+        // Check if it's a connection error
+        if (
+          dbError.message?.includes("Can't reach database server") ||
+          dbError.message?.includes("P1001") ||
+          dbError.code === "P1001"
+        ) {
+          return res.status(503).json({
+            error: "Database connection failed",
+            message: "Unable to connect to the database. Your Supabase database may be paused. Please check your Supabase dashboard and restore it if needed.",
+            details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+          });
+        }
+
+        // For other database errors, return generic error
+        return res.status(500).json({
+          error: "Failed to complete authentication",
+          message: "An error occurred while processing your authentication. Please try again.",
+          details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+        });
+      }
     }
 
     return res.status(400).json({
@@ -166,10 +246,33 @@ export const getSession = async (req: Request, res: Response) => {
         .json({ error: (error?.message as string) || "No active session" });
     }
 
-    return res.json({
+    const userId = data.session.user.id;
+
+    const adminProfile = await prisma.adminUser.findUnique({
+      where: { userId },
+      select: {
+        id: true,
+        role: true,
+        permissions: true,
+      },
+    });
+
+    const response: any = {
       user: data.session.user,
       session: data.session,
-    });
+    };
+
+    if (adminProfile) {
+      response.isAdmin = true;
+      response.admin = {
+        role: adminProfile.role,
+        permissions: adminProfile.permissions,
+      };
+    } else {
+      response.isAdmin = false;
+    }
+
+    return res.json(response);
   } catch (error) {
     return res.status(500).json({ error: "Failed to get session" });
   }
@@ -187,6 +290,129 @@ export const signOut = async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Sign out error:", error);
     return res.status(500).json({ error: "Failed to sign out" });
+  }
+};
+
+export const loginWithEmail = async (req: Request, res: Response) => {
+  try {
+    const { email, password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        error: "Email and password are required",
+      });
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      return res.status(401).json({
+        error: "Invalid email or password",
+        message: error.message,
+      });
+    }
+
+    if (!data?.user || !data?.session) {
+      return res.status(400).json({
+        error: "Authentication failed",
+        message: "No user or session returned",
+      });
+    }
+
+    const supabaseUserId = data.user.id;
+    const userEmail = data.user.email as string;
+
+    try {
+      let prismaUser = await prisma.user.findUnique({
+        where: { id: supabaseUserId },
+      });
+
+      if (!prismaUser) {
+        prismaUser = await prisma.user.create({
+          data: {
+            id: supabaseUserId,
+            email: userEmail,
+            name: data.user.user_metadata?.name || "User",
+            avatarUrl: data.user.user_metadata?.avatar_url,
+          },
+        });
+
+        // Create default subscription
+        try {
+          const { getOrCreateDefaultSubscription } = await import(
+            "../../utils/subscription"
+          );
+          await getOrCreateDefaultSubscription(supabaseUserId);
+        } catch (subscriptionError: any) {
+          console.error("Failed to initialize subscription:", subscriptionError);
+        }
+      }
+
+      // Check if user is an admin
+      let adminProfile = null;
+      try {
+        adminProfile = await prisma.adminUser.findUnique({
+          where: { userId: supabaseUserId },
+          select: {
+            id: true,
+            role: true,
+            permissions: true,
+          },
+        });
+      } catch (adminError: any) {
+        console.error("Failed to check admin status:", adminError);
+      }
+
+      const response: any = {
+        message: "Login successful",
+        user: data.user,
+        session: data.session,
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      };
+
+      if (adminProfile) {
+        response.isAdmin = true;
+        response.admin = {
+          role: adminProfile.role,
+          permissions: adminProfile.permissions,
+        };
+      } else {
+        response.isAdmin = false;
+      }
+
+      return res.json(response);
+    } catch (dbError: any) {
+      console.error("Database error during login:", dbError);
+      
+      if (
+        dbError.message?.includes("Can't reach database server") ||
+        dbError.message?.includes("P1001") ||
+        dbError.code === "P1001"
+      ) {
+        return res.status(503).json({
+          error: "Database connection failed",
+          message: "Unable to connect to the database. Please check your database connection or try again later.",
+          details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+        });
+      }
+
+      // For other database errors, return generic error
+      return res.status(500).json({
+        error: "Failed to complete login",
+        message: "An error occurred while processing your login. Please try again.",
+        details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+      });
+    }
+  } catch (error: any) {
+    console.error("Email login error:", error);
+    return res.status(500).json({
+      error: "Failed to login",
+      message: error.message || "An unexpected error occurred",
+    });
   }
 };
 
@@ -216,7 +442,32 @@ export const getCurrentUser = async (
       return res.status(404).json({ error: "User profile not found" });
     }
 
-    return res.json({ user: prismaUser });
+    // Check if user is an admin
+    const adminProfile = await prisma.adminUser.findUnique({
+      where: { userId: supabaseUser.id },
+      select: {
+        id: true,
+        role: true,
+        permissions: true,
+      },
+    });
+
+    const response: any = {
+      user: prismaUser,
+    };
+
+    // Add admin information if user is an admin
+    if (adminProfile) {
+      response.isAdmin = true;
+      response.admin = {
+        role: adminProfile.role,
+        permissions: adminProfile.permissions,
+      };
+    } else {
+      response.isAdmin = false;
+    }
+
+    return res.json(response);
   } catch (error) {
     return res.status(500).json({ error: "Failed to get user" });
   }

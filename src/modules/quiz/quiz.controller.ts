@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
+import { incrementQuizCount, decrementQuizCount } from "../../utils/usage";
 import {
   QuizType,
   Difficulty,
@@ -456,8 +457,11 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
         .json({ error: "OpenAI API key is not configured" });
     }
 
+    // Get validated model from middleware (defaults to gpt-3.5-turbo if not set)
+    const model = (req.body as any).validatedModel || "gpt-3.5-turbo";
+
     const response = await client.chat.completions.create({
-      model: "gpt-4-turbo", 
+      model: model, 
       temperature: 0.1,
       messages: [
         {
@@ -652,6 +656,9 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
         },
       },
     });
+
+    // Increment usage count
+    await incrementQuizCount(req.user.id);
 
     const safeQuiz = {
       id: quiz.id,
@@ -1236,6 +1243,9 @@ export const deleteQuiz = async (req: Request & { user?: any }, res: Response) =
         where: { id },
       }),
     ]);
+
+    // Decrement usage count
+    await decrementQuizCount(req.user.id);
 
     return res.json({
       message: "Quiz deleted successfully",

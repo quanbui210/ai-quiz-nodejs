@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
+import { incrementTopicCount, decrementTopicCount } from "../../utils/usage";
 
 export const listTopics = async (
   req: Request & { user?: any },
@@ -56,6 +57,8 @@ export const createTopic = async (
         userId: req.user.id,
       },
     });
+
+    await incrementTopicCount(req.user.id);
 
     return res.status(201).json({ topic });
   } catch (error: any) {
@@ -167,7 +170,6 @@ export const deleteTopic = async (
         .json({ error: "You don't have permission to delete this topic" });
     }
 
-    // Collect all related IDs for cascading deletes
     const quizIds = topic.quizzes.map((q) => q.id);
     const questionIds = topic.quizzes.flatMap((q) =>
       q.questions.map((q) => q.id),
@@ -176,10 +178,8 @@ export const deleteTopic = async (
       q.attempts.map((a) => a.id),
     );
 
-    // Build transaction operations array
     const operations: any[] = [];
 
-    // Delete answers from attempts
     if (attemptIds.length > 0) {
       operations.push(
         prisma.answer.deleteMany({
@@ -190,7 +190,6 @@ export const deleteTopic = async (
       );
     }
 
-    // Delete quiz attempts
     if (quizIds.length > 0) {
       operations.push(
         prisma.quizAttempt.deleteMany({
@@ -201,7 +200,6 @@ export const deleteTopic = async (
       );
     }
 
-    // Delete answers from questions
     if (questionIds.length > 0) {
       operations.push(
         prisma.answer.deleteMany({
@@ -212,7 +210,6 @@ export const deleteTopic = async (
       );
     }
 
-    // Delete explanations
     if (questionIds.length > 0) {
       operations.push(
         prisma.explanation.deleteMany({
@@ -223,7 +220,6 @@ export const deleteTopic = async (
       );
     }
 
-    // Delete questions
     if (quizIds.length > 0) {
       operations.push(
         prisma.question.deleteMany({
@@ -234,7 +230,6 @@ export const deleteTopic = async (
       );
     }
 
-    // Delete quizzes
     if (quizIds.length > 0) {
       operations.push(
         prisma.quiz.deleteMany({
@@ -245,7 +240,6 @@ export const deleteTopic = async (
       );
     }
 
-    // Delete progress
     operations.push(
       prisma.progress.deleteMany({
         where: {
@@ -254,7 +248,6 @@ export const deleteTopic = async (
       }),
     );
 
-    // Delete suggestions
     operations.push(
       prisma.suggestion.deleteMany({
         where: {
@@ -263,15 +256,15 @@ export const deleteTopic = async (
       }),
     );
 
-    // Delete topic
     operations.push(
       prisma.topic.delete({
         where: { id },
       }),
     );
 
-    // Execute all operations in a transaction
     await prisma.$transaction(operations);
+
+    await decrementTopicCount(req.user.id);
 
     return res.json({
       message: "Topic deleted successfully",

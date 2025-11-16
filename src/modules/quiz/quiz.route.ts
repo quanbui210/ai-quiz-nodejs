@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
 import {
+  checkQuizLimit,
+  validateModelFromBody,
+} from "../../middleware/limit-check.middleware";
+import {
   createQuiz,
   getQuiz,
   submitAnswers,
@@ -219,7 +223,13 @@ router.post("/validate-topic", authenticate, validateQuizTopic);
  *             schema:
  *               $ref: "#/components/schemas/Error"
  */
-router.post("/create", authenticate, createQuiz);
+router.post(
+  "/create",
+  authenticate,
+  checkQuizLimit,
+  validateModelFromBody,
+  createQuiz,
+);
 
 /**
  * @swagger

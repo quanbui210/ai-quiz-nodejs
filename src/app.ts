@@ -7,6 +7,9 @@ import authRoutes from "./modules/auth/auth.routes";
 import topicRoutes from "./modules/topic/topic.route";
 import quizRoutes from "./modules/quiz/quiz.route";
 import resultsRoutes from "./modules/results/results.route";
+import subscriptionRoutes from "./modules/subscription/subscription.routes";
+import adminRoutes from "./modules/admin/admin.routes";
+import { handleWebhook } from "./modules/subscription/subscription.controller";
 dotenv.config();
 
 const app = express();
@@ -21,7 +24,19 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-// Middleware
+
+
+app.post(
+  "/webhook",
+  express.raw({ type: "application/json" }),
+  handleWebhook,
+);
+app.post(
+  "/api/v1/subscription/webhook",
+  express.raw({ type: "application/json" }),
+  handleWebhook,
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
@@ -57,6 +72,8 @@ app.get("/", (req, res) => {
       topics: "/api/v1/topic",
       quizzes: "/api/v1/quiz",
       results: "/api/v1/results",
+      subscription: "/api/v1/subscription",
+      admin: "/api/v1/admin",
     },
     swagger: "/api-docs",
   });
@@ -66,6 +83,8 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/topic", topicRoutes);
 app.use("/api/v1/quiz", quizRoutes);
 app.use("/api/v1/results", resultsRoutes);
+app.use("/api/v1/subscription", subscriptionRoutes);
+app.use("/api/v1/admin", adminRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -8,7 +8,7 @@ generator client {
 }
 
 model User {
-  id             String    @id // Uses Supabase Auth user ID (no auto-generation)
+  id             String    @id
   email          String    @unique
   name           String?
   avatarUrl      String?
@@ -20,6 +20,10 @@ model User {
   answers        Answer[]
   progress       Progress[]
   attempts       QuizAttempt[]
+  subscription   UserSubscription?
+  usage          UserUsage?
+  documents      Document[]
+  adminProfile   AdminUser?
 }
 
 model Topic {
@@ -173,4 +177,122 @@ enum AttemptStatus {
   IN_PROGRESS
   PAUSED
   COMPLETED
+}
+
+model SubscriptionPlan {
+  id              String   @id @default(uuid())
+  name            String
+  stripePriceId   String?  @unique
+  stripeProductId String?
+  isDefault       Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  isCustom        Boolean  @default(false)
+  // Limits
+  maxTopics       Int      @default(5)
+  maxQuizzes      Int      @default(10)
+  maxDocuments    Int      @default(0)
+  allowedModels   String[] // e.g., ["gpt-3.5-turbo", "gpt-4-turbo"]
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  subscriptions   UserSubscription[]
+}
+
+
+model UserSubscription {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  planId            String
+  stripeCustomerId  String?  @unique
+  stripeSubscriptionId String? @unique
+  
+  // Current effective limits (can be overridden by admin)
+  maxTopics         Int
+  maxQuizzes        Int
+  maxDocuments      Int
+  allowedModels     String[]
+  
+  // Subscription status
+  status            SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAtPeriodEnd  Boolean @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan              SubscriptionPlan @relation(fields: [planId], references: [id])
+  
+  @@index([userId])
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+}
+
+model UserUsage {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  
+  topicsCount   Int      @default(0)
+  quizzesCount  Int      @default(0)
+  documentsCount Int     @default(0)
+  
+  lastResetAt   DateTime @default(now())
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+}
+
+model AdminUser {
+  id            String   @id @default(uuid())
+  userId        String   @unique
+  role          AdminRole @default(MODERATOR)
+  permissions   String[]
+  createdAt     DateTime @default(now())
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+}
+
+model Document {
+  id            String   @id @default(uuid())
+  userId        String
+  filename      String
+  filePath      String
+  fileSize      Int
+  mimeType      String
+  status        DocumentStatus @default(UPLOADING)
+  vectorized    Boolean  @default(false)
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  CANCELED
+  PAST_DUE
+  UNPAID
+  TRIALING
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+enum DocumentStatus {
+  UPLOADING
+  PROCESSING
+  READY
+  FAILED
 }

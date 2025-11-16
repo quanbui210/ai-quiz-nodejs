@@ -9,11 +9,10 @@ This backend service provides a RESTful API for managing quizzes, topics, user a
 ## Key Features
 
 ### Quiz Management
-- **AI-Powered Quiz Generation**: Automatically generates multiple-choice questions using OpenAI GPT-4 Turbo based on user-provided topics and difficulty levels
+- **AI-Powered Quiz Generation**: Automatically generates multiple-choice questions using OpenAI GPT-3.5 Turbo based on user-provided topics and difficulty levels
 - **Topic Suggestions**: AI suggests specific quiz topics from general user input (e.g., "driving license" → "Traffic Signs", "Road Safety Rules", etc.)
 - **Topic Validation**: Validates that topics are specific enough for quality quiz generation
 - **Multiple Difficulty Levels**: Supports BEGINNER, INTERMEDIATE, and ADVANCED difficulty levels
-- **Flexible Question Count**: Generate quizzes with 1-50 questions (default: 15)
 - **Optional Timer**: Set time limits for quizzes (in seconds) or create untimed quizzes
 - **Quiz Organization**: Organize quizzes by topics with full CRUD operations
 
@@ -25,14 +24,14 @@ This backend service provides a RESTful API for managing quizzes, topics, user a
 - **Detailed Results**: View results with correct answers, explanations, and per-question feedback
 
 ### Analytics & Progress Tracking
-- **Comprehensive Dashboard Analytics**:
+- **Dashboard Analytics**:
   - Overall statistics (total topics, quizzes, attempts, questions)
   - Performance metrics (average score, best/worst scores)
   - Time-based analytics (time spent vs. time allocated, efficiency metrics)
   - Weekly comparisons (this week vs. last week for attempts, topics, scores)
   - Topic-level progress tracking with completion percentages
   - Time-series data (last 7, 30, and 90 days) for performance graphs
-- **Attempt History**: View all quiz attempts with filtering and pagination
+
 - **Progress Tracking**: Track progress per topic with average scores and completion rates
 
 ### Authentication & Security
@@ -41,11 +40,7 @@ This backend service provides a RESTful API for managing quizzes, topics, user a
 - **User Isolation**: Users can only access their own quizzes, topics, and results
 - **Owner Verification**: Only quiz/topic owners can edit or delete their content
 
-### Data Management
-- **Cascading Deletes**: Proper cleanup of related data when deleting topics or quizzes
-- **Data Validation**: Comprehensive validation of AI-generated content (options, correct answers, explanations)
-- **Answer Matching**: Intelligent matching of correct answers with fuzzy matching fallbacks
-- **Status Tracking**: Track quiz attempt status (IN_PROGRESS, PAUSED, COMPLETED)
+
 
 ## Technology Stack
 
@@ -57,7 +52,7 @@ This backend service provides a RESTful API for managing quizzes, topics, user a
 - **Authentication**: Supabase Auth (Google OAuth)
 
 ### AI & External Services
-- **OpenAI API**: GPT-4 Turbo for quiz generation and topic suggestions
+- **OpenAI API**: GPT-3.5 Turbo for quiz generation and topic suggestions
 - **Supabase**: Authentication, database hosting, and connection pooling
 
 ### Development Tools
@@ -88,8 +83,6 @@ quiz-backend/
 │   └── utils/
 │       ├── prisma.ts          # Prisma client instance
 │       └── supabase.ts        # Supabase client instance
-├── scripts/
-│   └── fix-existing-attempts.ts # Data migration utility
 ├── public/                    # Static files (OAuth callback page)
 └── package.json
 ```
@@ -165,16 +158,4 @@ Implementation of Retrieval-Augmented Generation (RAG) pattern to:
 - Support multiple document formats and sources
 
 This will enable users to create quizzes from their own study materials, textbooks, or any document, making the platform more versatile for personalized learning.
-
-## Contributing
-
-This is a private project. For questions or suggestions, please contact the maintainer.
-
-## License
-
-ISC
-
-## Support
-
-For issues or questions, please refer to the API documentation at `/api-docs` or check the codebase documentation files.
 

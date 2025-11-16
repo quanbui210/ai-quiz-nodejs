@@ -9,9 +9,7 @@ const prisma = new PrismaClient();
 
 async function fixExistingAttempts() {
   try {
-    console.log("Starting to fix existing QuizAttempt records...");
 
-    // Find all attempts that have completedAt set but status is not COMPLETED
     const attemptsToFix = await prisma.quizAttempt.findMany({
       where: {
         completedAt: { not: null },
@@ -25,14 +23,12 @@ async function fixExistingAttempts() {
       },
     });
 
-    console.log(`Found ${attemptsToFix.length} attempts to fix`);
 
     if (attemptsToFix.length === 0) {
       console.log("No attempts need fixing. All done!");
       return;
     }
 
-    // Update all of them to COMPLETED
     const result = await prisma.quizAttempt.updateMany({
       where: {
         completedAt: { not: null },
@@ -43,10 +39,7 @@ async function fixExistingAttempts() {
       },
     });
 
-    console.log(`Successfully updated ${result.count} attempts to COMPLETED status`);
 
-    // Also fix any attempts that have score/correctCount but no completedAt
-    // These should also be marked as COMPLETED
     const attemptsWithScore = await prisma.quizAttempt.findMany({
       where: {
         score: { not: null },
@@ -73,7 +66,7 @@ async function fixExistingAttempts() {
         },
         data: {
           status: AttemptStatus.COMPLETED,
-          completedAt: new Date(), // Set to current time or createdAt if available
+          completedAt: new Date(), 
         },
       });
 
@@ -98,23 +91,18 @@ async function fixExistingAttempts() {
     console.log(`  IN_PROGRESS: ${inProgressCount}`);
     console.log(`  PAUSED: ${pausedCount}`);
 
-    console.log("\n✅ All done! Your data should now be visible in analytics.");
   } catch (error) {
-    console.error("❌ Error fixing attempts:", error);
     throw error;
   } finally {
     await prisma.$disconnect();
   }
 }
 
-// Run the fix
 fixExistingAttempts()
   .then(() => {
-    console.log("\n✨ Script completed successfully!");
     process.exit(0);
   })
   .catch((error) => {
-    console.error("\n❌ Script failed:", error);
     process.exit(1);
   });
 

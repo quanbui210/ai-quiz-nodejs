@@ -18,7 +18,10 @@
     "prisma:migrate": "npx prisma migrate dev --schema=./src/prisma/schema.prisma",
     "prisma:migrate:deploy": "npx prisma migrate deploy --schema=./src/prisma/schema.prisma",
     "prisma:push": "npx prisma db push --schema=./src/prisma/schema.prisma",
-    "fix:attempts": "ts-node scripts/fix-existing-attempts.ts"
+    "fix:attempts": "ts-node scripts/fix-existing-attempts.ts",
+    "seed:plans": "ts-node scripts/seed-default-plans.ts",
+    "seed:admin": "ts-node scripts/seed-admin-user.ts",
+    "sync:usage": "ts-node scripts/sync-user-usage.ts"
   },
   "author": "",
   "license": "ISC",
@@ -32,6 +35,7 @@
     "nodemon": "^3.1.10",
     "openai": "^6.8.1",
     "prisma": "^6.19.0",
+    "stripe": "^19.3.1",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^13.0.0"

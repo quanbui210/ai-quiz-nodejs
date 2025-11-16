@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   loginWithGoogle,
+  loginWithEmail,
   handleCallback,
   getSession,
   getCurrentUser,
@@ -48,6 +49,7 @@ const router = Router();
  *               $ref: "#/components/schemas/Error"
  */
 router.get("/login", loginWithGoogle);
+router.post("/login", loginWithEmail);
 
 /**
  * @swagger
