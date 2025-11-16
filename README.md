@@ -146,53 +146,6 @@ quiz-backend/
 
 **Full API Documentation**: Available at `/api-docs` when server is running (Swagger UI)
 
-## Setup Instructions
-
-### Prerequisites
-- Node.js 18+ and npm
-- PostgreSQL database (Supabase recommended)
-- OpenAI API key
-- Supabase project with Google OAuth configured
-## Architecture & Design Decisions
-
-### Quiz Generation Flow
-1. User provides topic, difficulty, and question count
-2. System validates topic specificity
-3. OpenAI GPT-4 Turbo generates quiz content with strict formatting
-4. Parser extracts questions, options, correct answers, and explanations
-5. Validation ensures all questions have 4 options, matching correct answers, and explanations
-6. Quiz saved to database with questions and explanations
-
-### Pause/Resume Mechanism
-- **Pause**: Saves current answers and elapsed time, marks attempt as PAUSED
-- **Resume**: Retrieves paused attempt, pre-fills answers, resumes timer from elapsed time
-- **Completion**: Updates paused attempt to COMPLETED with final scores
-
-### Analytics Calculation
-- All analytics filter by `status = COMPLETED` to exclude in-progress attempts
-- Time-based comparisons use UTC to avoid timezone issues
-- Time series data generated for 7, 30, and 90-day periods
-- Topic progress calculated from completed quizzes per topic
-
-### Security
-- JWT tokens validated on every protected endpoint
-- User ownership verified before any data modification
-- Correct answers hidden until quiz submission
-- Cascading deletes ensure data integrity
-
-## Testing
-
-The project includes unit and integration tests:
-- Unit tests for controllers and utilities
-- Integration tests for API endpoints
-- Test coverage reporting available
-
-Run tests with:
-```bash
-npm test
-npm run test:watch
-npm run test:coverage
-```
 
 ## Upcoming Features
 
