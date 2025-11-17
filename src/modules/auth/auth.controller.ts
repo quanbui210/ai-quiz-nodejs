@@ -5,8 +5,8 @@ import prisma from "../../utils/prisma";
 export const loginWithGoogle = async (req: Request, res: Response) => {
   try {
     const { redirectTo } = req.query;
-    const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
-    const redirectUrl = (redirectTo as string) || `${backendUrl}/callback.html`;
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+    const redirectUrl = (redirectTo as string) || `${frontendUrl}/auth/callback`;
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -361,7 +361,6 @@ export const loginWithEmail = async (req: Request, res: Response) => {
         }
       }
 
-      // Check if user is an admin
       let adminProfile = null;
       try {
         adminProfile = await prisma.adminUser.findUnique({
