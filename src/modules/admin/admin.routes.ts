@@ -13,7 +13,10 @@ import {
   deletePlan,
 } from "./admin.controller";
 import { authenticate } from "../../middleware/auth.middleware";
-import { requireAdmin, requireSuperAdmin } from "../../middleware/admin.middleware";
+import {
+  requireAdmin,
+  requireSuperAdmin,
+} from "../../middleware/admin.middleware";
 
 const router = Router();
 
@@ -36,4 +39,3 @@ router.put("/plans/:planId", requireSuperAdmin, updatePlan);
 router.delete("/plans/:planId", requireSuperAdmin, deletePlan);
 
 export default router;
-

@@ -5,7 +5,6 @@ import { updateSubscriptionLimits } from "../../utils/subscription";
 import { AdminRole } from "@prisma/client";
 import { stripe } from "../../utils/stripe";
 
-
 export const getDashboard = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -49,20 +48,24 @@ export const getDashboard = async (
       }),
     ]);
 
-    const planIds = subscriptionByPlan.map((s) => s.planId);
+    const planIds = subscriptionByPlan.map((s: { planId: string }) => s.planId);
     const plansData = await prisma.subscriptionPlan.findMany({
       where: { id: { in: planIds } },
       select: { id: true, name: true },
     });
 
-    const subscriptionBreakdown = subscriptionByPlan.map((sub) => {
-      const plan = plansData.find((p) => p.id === sub.planId);
-      return {
-        planId: sub.planId,
-        planName: plan?.name || "Unknown",
-        count: sub._count,
-      };
-    });
+    const subscriptionBreakdown = subscriptionByPlan.map(
+      (sub: { planId: string; _count: number }) => {
+        const plan = plansData.find(
+          (p: { id: string; name: string }) => p.id === sub.planId,
+        );
+        return {
+          planId: sub.planId,
+          planName: plan?.name || "Unknown",
+          count: sub._count,
+        };
+      },
+    );
 
     let revenue = {
       total: 0,
@@ -183,22 +186,22 @@ export const getDashboard = async (
         freeSubscriptions,
         paidSubscriptions,
         totalSubscriptions,
-        
+
         totalTopics,
         totalQuizzes,
         totalDocuments,
-        
+
         totalUsage: {
           topics: totalUsage._sum.topicsCount || 0,
           quizzes: totalUsage._sum.quizzesCount || 0,
           documents: totalUsage._sum.documentsCount || 0,
         },
-        
+
         revenue,
-        
+
         totalPlans: plans,
         subscriptionBreakdown,
-        subscriptions, 
+        subscriptions,
       },
     });
   } catch (error: any) {
@@ -458,10 +461,7 @@ export const makeAdmin = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Revoke admin privileges
  */
-export const revokeAdmin = async (
-  req: AuthenticatedRequest,
-  res: Response,
-) => {
+export const revokeAdmin = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { userId } = req.params;
 
@@ -514,10 +514,7 @@ export const listPlans = async (req: AuthenticatedRequest, res: Response) => {
 /**
  * Create custom subscription plan
  */
-export const createPlan = async (
-  req: AuthenticatedRequest,
-  res: Response,
-) => {
+export const createPlan = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const {
       name,
@@ -559,10 +556,7 @@ export const createPlan = async (
 /**
  * Update subscription plan
  */
-export const updatePlan = async (
-  req: AuthenticatedRequest,
-  res: Response,
-) => {
+export const updatePlan = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { planId } = req.params;
     const {
@@ -590,8 +584,7 @@ export const updatePlan = async (
     if (stripePriceId !== undefined) updateData.stripePriceId = stripePriceId;
     if (stripeProductId !== undefined)
       updateData.stripeProductId = stripeProductId;
-    if (isActive !== undefined && plan.isCustom)
-      updateData.isActive = isActive;
+    if (isActive !== undefined && plan.isCustom) updateData.isActive = isActive;
     if (maxTopics !== undefined) updateData.maxTopics = maxTopics;
     if (maxQuizzes !== undefined) updateData.maxQuizzes = maxQuizzes;
     if (maxDocuments !== undefined) updateData.maxDocuments = maxDocuments;
@@ -615,10 +608,7 @@ export const updatePlan = async (
 /**
  * Delete custom subscription plan
  */
-export const deletePlan = async (
-  req: AuthenticatedRequest,
-  res: Response,
-) => {
+export const deletePlan = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { planId } = req.params;
 
@@ -658,4 +648,3 @@ export const deletePlan = async (
     return res.status(500).json({ error: "Failed to delete plan" });
   }
 };
-

@@ -8,7 +8,6 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
     const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
     const redirectUrl = (redirectTo as string) || `${backendUrl}/callback.html`;
 
-
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -21,16 +20,13 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       },
     });
 
-
     if (error || !data?.url) {
-      return res
-        .status(400)
-        .json({
-          error:
-            (error?.message as string) ||
-            "No redirect URL received" ||
-            "OAuth error",
-        });
+      return res.status(400).json({
+        error:
+          (error?.message as string) ||
+          "No redirect URL received" ||
+          "OAuth error",
+      });
     }
 
     return res.json({
@@ -117,7 +113,10 @@ export const handleCallback = async (req: Request, res: Response) => {
           );
           await getOrCreateDefaultSubscription(supabaseUserId);
         } catch (subscriptionError: any) {
-          console.error("Failed to initialize subscription:", subscriptionError);
+          console.error(
+            "Failed to initialize subscription:",
+            subscriptionError,
+          );
         }
       }
 
@@ -165,7 +164,7 @@ export const handleCallback = async (req: Request, res: Response) => {
       }
 
       const userId = data.user.id;
-      
+
       try {
         let adminProfile = null;
         try {
@@ -200,7 +199,7 @@ export const handleCallback = async (req: Request, res: Response) => {
         return res.json(response);
       } catch (dbError: any) {
         console.error("Database error during OAuth callback:", dbError);
-        
+
         // Check if it's a connection error
         if (
           dbError.message?.includes("Can't reach database server") ||
@@ -209,16 +208,24 @@ export const handleCallback = async (req: Request, res: Response) => {
         ) {
           return res.status(503).json({
             error: "Database connection failed",
-            message: "Unable to connect to the database. Your Supabase database may be paused. Please check your Supabase dashboard and restore it if needed.",
-            details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+            message:
+              "Unable to connect to the database. Your Supabase database may be paused. Please check your Supabase dashboard and restore it if needed.",
+            details:
+              process.env.NODE_ENV === "development"
+                ? dbError.message
+                : undefined,
           });
         }
 
         // For other database errors, return generic error
         return res.status(500).json({
           error: "Failed to complete authentication",
-          message: "An error occurred while processing your authentication. Please try again.",
-          details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+          message:
+            "An error occurred while processing your authentication. Please try again.",
+          details:
+            process.env.NODE_ENV === "development"
+              ? dbError.message
+              : undefined,
         });
       }
     }
@@ -347,7 +354,10 @@ export const loginWithEmail = async (req: Request, res: Response) => {
           );
           await getOrCreateDefaultSubscription(supabaseUserId);
         } catch (subscriptionError: any) {
-          console.error("Failed to initialize subscription:", subscriptionError);
+          console.error(
+            "Failed to initialize subscription:",
+            subscriptionError,
+          );
         }
       }
 
@@ -387,7 +397,7 @@ export const loginWithEmail = async (req: Request, res: Response) => {
       return res.json(response);
     } catch (dbError: any) {
       console.error("Database error during login:", dbError);
-      
+
       if (
         dbError.message?.includes("Can't reach database server") ||
         dbError.message?.includes("P1001") ||
@@ -395,16 +405,22 @@ export const loginWithEmail = async (req: Request, res: Response) => {
       ) {
         return res.status(503).json({
           error: "Database connection failed",
-          message: "Unable to connect to the database. Please check your database connection or try again later.",
-          details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+          message:
+            "Unable to connect to the database. Please check your database connection or try again later.",
+          details:
+            process.env.NODE_ENV === "development"
+              ? dbError.message
+              : undefined,
         });
       }
 
       // For other database errors, return generic error
       return res.status(500).json({
         error: "Failed to complete login",
-        message: "An error occurred while processing your login. Please try again.",
-        details: process.env.NODE_ENV === "development" ? dbError.message : undefined,
+        message:
+          "An error occurred while processing your login. Please try again.",
+        details:
+          process.env.NODE_ENV === "development" ? dbError.message : undefined,
       });
     }
   } catch (error: any) {

@@ -7,9 +7,9 @@ exports.deleteDocumentEmbeddings = deleteDocumentEmbeddings;
 const client_1 = require("@prisma/client");
 const prisma = new client_1.PrismaClient();
 async function storeEmbeddings(documentId, chunks) {
-    try {
-        for (const chunk of chunks) {
-            await prisma.$executeRaw `
+  try {
+    for (const chunk of chunks) {
+      await prisma.$executeRaw`
         INSERT INTO "DocumentEmbedding" (
           id,
           "documentId",
@@ -29,20 +29,24 @@ async function storeEmbeddings(documentId, chunks) {
           NOW()
         )
       `;
-        }
-        await prisma.document.update({
-            where: { id: documentId },
-            data: { chunkCount: chunks.length },
-        });
     }
-    catch (error) {
-        throw new Error(`Failed to store embeddings: ${error.message}`);
-    }
+    await prisma.document.update({
+      where: { id: documentId },
+      data: { chunkCount: chunks.length },
+    });
+  } catch (error) {
+    throw new Error(`Failed to store embeddings: ${error.message}`);
+  }
 }
-async function findSimilarChunks(documentId, queryEmbedding, limit = 5, similarityThreshold = 0.7) {
-    try {
-        const embeddingVector = JSON.stringify(queryEmbedding);
-        const results = await prisma.$queryRaw `
+async function findSimilarChunks(
+  documentId,
+  queryEmbedding,
+  limit = 5,
+  similarityThreshold = 0.7,
+) {
+  try {
+    const embeddingVector = JSON.stringify(queryEmbedding);
+    const results = await prisma.$queryRaw`
       SELECT
         id,
         "chunkIndex",
@@ -55,15 +59,19 @@ async function findSimilarChunks(documentId, queryEmbedding, limit = 5, similari
       ORDER BY embedding <=> ${embeddingVector}::vector
       LIMIT ${limit}
     `;
-        return results;
-    }
-    catch (error) {
-        throw new Error(`Failed to find similar chunks: ${error.message}`);
-    }
+    return results;
+  } catch (error) {
+    throw new Error(`Failed to find similar chunks: ${error.message}`);
+  }
 }
-async function findSimilarChunksAcrossDocuments(documentIds, queryEmbedding, limit = 5, similarityThreshold = 0.7) {
-    try {
-        const results = await prisma.$queryRaw `
+async function findSimilarChunksAcrossDocuments(
+  documentIds,
+  queryEmbedding,
+  limit = 5,
+  similarityThreshold = 0.7,
+) {
+  try {
+    const results = await prisma.$queryRaw`
       SELECT
         id,
         "documentId",
@@ -77,20 +85,20 @@ async function findSimilarChunksAcrossDocuments(documentIds, queryEmbedding, lim
       ORDER BY embedding <=> ${JSON.stringify(queryEmbedding)}::vector
       LIMIT ${limit}
     `;
-        return results;
-    }
-    catch (error) {
-        throw new Error(`Failed to find similar chunks across documents: ${error.message}`);
-    }
+    return results;
+  } catch (error) {
+    throw new Error(
+      `Failed to find similar chunks across documents: ${error.message}`,
+    );
+  }
 }
 async function deleteDocumentEmbeddings(documentId) {
-    try {
-        await prisma.documentEmbedding.deleteMany({
-            where: { documentId },
-        });
-    }
-    catch (error) {
-        throw new Error(`Failed to delete embeddings: ${error.message}`);
-    }
+  try {
+    await prisma.documentEmbedding.deleteMany({
+      where: { documentId },
+    });
+  } catch (error) {
+    throw new Error(`Failed to delete embeddings: ${error.message}`);
+  }
 }
 //# sourceMappingURL=pgvector.js.map

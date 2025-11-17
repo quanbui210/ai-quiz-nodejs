@@ -1,20 +1,23 @@
-export declare const getOrCreateDefaultSubscription: (userId: string) => Promise<{
+export declare const getOrCreateDefaultSubscription: (
+  userId: string,
+) => Promise<
+  {
     plan: {
-        name: string;
-        id: string;
-        maxTopics: number;
-        maxQuizzes: number;
-        maxDocuments: number;
-        allowedModels: string[];
-        createdAt: Date;
-        updatedAt: Date;
-        stripePriceId: string | null;
-        stripeProductId: string | null;
-        isDefault: boolean;
-        isActive: boolean;
-        isCustom: boolean;
+      name: string;
+      id: string;
+      maxTopics: number;
+      maxQuizzes: number;
+      maxDocuments: number;
+      allowedModels: string[];
+      createdAt: Date;
+      updatedAt: Date;
+      stripePriceId: string | null;
+      stripeProductId: string | null;
+      isDefault: boolean;
+      isActive: boolean;
+      isCustom: boolean;
     };
-} & {
+  } & {
     id: string;
     userId: string;
     stripeCustomerId: string | null;
@@ -30,24 +33,29 @@ export declare const getOrCreateDefaultSubscription: (userId: string) => Promise
     cancelAtPeriodEnd: boolean;
     createdAt: Date;
     updatedAt: Date;
-}>;
-export declare const updateSubscriptionFromPlan: (userId: string, planId: string) => Promise<{
+  }
+>;
+export declare const updateSubscriptionFromPlan: (
+  userId: string,
+  planId: string,
+) => Promise<
+  {
     plan: {
-        name: string;
-        id: string;
-        maxTopics: number;
-        maxQuizzes: number;
-        maxDocuments: number;
-        allowedModels: string[];
-        createdAt: Date;
-        updatedAt: Date;
-        stripePriceId: string | null;
-        stripeProductId: string | null;
-        isDefault: boolean;
-        isActive: boolean;
-        isCustom: boolean;
+      name: string;
+      id: string;
+      maxTopics: number;
+      maxQuizzes: number;
+      maxDocuments: number;
+      allowedModels: string[];
+      createdAt: Date;
+      updatedAt: Date;
+      stripePriceId: string | null;
+      stripeProductId: string | null;
+      isDefault: boolean;
+      isActive: boolean;
+      isCustom: boolean;
     };
-} & {
+  } & {
     id: string;
     userId: string;
     stripeCustomerId: string | null;
@@ -63,29 +71,34 @@ export declare const updateSubscriptionFromPlan: (userId: string, planId: string
     cancelAtPeriodEnd: boolean;
     createdAt: Date;
     updatedAt: Date;
-}>;
-export declare const updateSubscriptionLimits: (userId: string, limits: {
+  }
+>;
+export declare const updateSubscriptionLimits: (
+  userId: string,
+  limits: {
     maxTopics?: number;
     maxQuizzes?: number;
     maxDocuments?: number;
     allowedModels?: string[];
-}) => Promise<{
+  },
+) => Promise<
+  {
     plan: {
-        name: string;
-        id: string;
-        maxTopics: number;
-        maxQuizzes: number;
-        maxDocuments: number;
-        allowedModels: string[];
-        createdAt: Date;
-        updatedAt: Date;
-        stripePriceId: string | null;
-        stripeProductId: string | null;
-        isDefault: boolean;
-        isActive: boolean;
-        isCustom: boolean;
+      name: string;
+      id: string;
+      maxTopics: number;
+      maxQuizzes: number;
+      maxDocuments: number;
+      allowedModels: string[];
+      createdAt: Date;
+      updatedAt: Date;
+      stripePriceId: string | null;
+      stripeProductId: string | null;
+      isDefault: boolean;
+      isActive: boolean;
+      isCustom: boolean;
     };
-} & {
+  } & {
     id: string;
     userId: string;
     stripeCustomerId: string | null;
@@ -101,5 +114,6 @@ export declare const updateSubscriptionLimits: (userId: string, limits: {
     cancelAtPeriodEnd: boolean;
     createdAt: Date;
     updatedAt: Date;
-}>;
+  }
+>;
 //# sourceMappingURL=subscription.d.ts.map

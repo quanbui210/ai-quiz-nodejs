@@ -26,13 +26,7 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-
-
-app.post(
-  "/webhook",
-  express.raw({ type: "application/json" }),
-  handleWebhook,
-);
+app.post("/webhook", express.raw({ type: "application/json" }), handleWebhook);
 app.post(
   "/api/v1/subscription/webhook",
   express.raw({ type: "application/json" }),

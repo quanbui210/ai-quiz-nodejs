@@ -10,7 +10,9 @@ const supabaseUrl = process.env.SUPABASE_URL || "http://127.0.0.1:55321";
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 if (!supabaseServiceKey) {
-  console.error("Error: SUPABASE_SERVICE_ROLE_KEY is required to create admin user");
+  console.error(
+    "Error: SUPABASE_SERVICE_ROLE_KEY is required to create admin user",
+  );
   console.error("Please set SUPABASE_SERVICE_ROLE_KEY in your .env file");
   process.exit(1);
 }
@@ -29,7 +31,8 @@ async function main() {
   const adminPassword = process.env.ADMIN_PASSWORD || "password";
 
   try {
-    const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+    const { data: existingUsers, error: listError } =
+      await supabaseAdmin.auth.admin.listUsers();
 
     if (listError) {
       console.error("Error listing users:", listError);
@@ -42,14 +45,15 @@ async function main() {
       console.log(`User with email ${adminEmail} already exists in Supabase`);
     } else {
       // Create user in Supabase Auth
-      const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-        email: adminEmail,
-        password: adminPassword,
-        email_confirm: true, // Auto-confirm email
-        user_metadata: {
-          name: "Admin User",
-        },
-      });
+      const { data: newUser, error: createError } =
+        await supabaseAdmin.auth.admin.createUser({
+          email: adminEmail,
+          password: adminPassword,
+          email_confirm: true, // Auto-confirm email
+          user_metadata: {
+            name: "Admin User",
+          },
+        });
 
       if (createError) {
         console.error("Error creating Supabase user:", createError);
@@ -109,7 +113,9 @@ async function main() {
     console.log(`✓ Created admin profile with SUPER_ADMIN role`);
 
     // Create default subscription if it doesn't exist
-    const { getOrCreateDefaultSubscription } = await import("../src/utils/subscription");
+    const { getOrCreateDefaultSubscription } = await import(
+      "../src/utils/subscription"
+    );
     await getOrCreateDefaultSubscription(prismaUser.id);
     console.log(`✓ Created default subscription`);
 
@@ -132,4 +138,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

@@ -26,7 +26,6 @@ async function main() {
     },
   });
 
-
   const proPlan = await prisma.subscriptionPlan.create({
     data: {
       name: "Pro",
@@ -36,11 +35,10 @@ async function main() {
       maxTopics: 50,
       maxQuizzes: 200,
       maxDocuments: 20,
-      
+
       allowedModels: ["gpt-3.5-turbo", "gpt-4-turbo"],
     },
   });
-
 
   const premiumPlan = await prisma.subscriptionPlan.create({
     data: {
@@ -54,7 +52,6 @@ async function main() {
       allowedModels: ["gpt-3.5-turbo", "gpt-4-turbo", "gpt-4o"],
     },
   });
-
 
   console.log("\nNext steps:");
   console.log("1. Create products and prices in Stripe Dashboard");
@@ -70,4 +67,3 @@ main()
   .finally(async () => {
     await prisma.$disconnect();
   });
-

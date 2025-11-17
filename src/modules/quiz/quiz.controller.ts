@@ -17,7 +17,10 @@ const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-export const listQuizzes = async (req: Request & { user?: any }, res: Response) => {
+export const listQuizzes = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   const { topicId } = req.params;
   if (!topicId || typeof topicId !== "string") {
     return res.status(400).json({ error: "topicId is required" });
@@ -27,8 +30,7 @@ export const listQuizzes = async (req: Request & { user?: any }, res: Response) 
       where: { topicId },
     });
     return res.json({ quizzes });
-  }
-  catch (error: any) {
+  } catch (error: any) {
     console.error("Prisma error:", error);
     return res.status(500).json({ error: "Failed to list quizzes" });
   }
@@ -56,7 +58,7 @@ export const suggestQuizTopic = async (req: Request, res: Response) => {
 
     const response = await client.chat.completions.create({
       model: "gpt-3.5-turbo",
-      temperature: 0.7, 
+      temperature: 0.7,
       messages: [
         {
           role: "system",
@@ -121,17 +123,20 @@ export const suggestQuizTopic = async (req: Request, res: Response) => {
   }
 };
 
-
 export const validateQuizTopic = async (req: Request, res: Response) => {
   try {
     const { name } = req.body;
 
     if (!name || typeof name !== "string" || name.trim().length === 0) {
-      return res.status(400).json({ error: "name is required and must be a non-empty string" });
+      return res
+        .status(400)
+        .json({ error: "name is required and must be a non-empty string" });
     }
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: "OpenAI API key is not configured" });
+      return res
+        .status(500)
+        .json({ error: "OpenAI API key is not configured" });
     }
 
     const response = await client.chat.completions.create({
@@ -174,15 +179,15 @@ export const validateQuizTopic = async (req: Request, res: Response) => {
 
     const isValid = topicContent.toLowerCase().includes("true");
     if (!isValid) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: topicContent,
-        isValid: false 
+        isValid: false,
       });
     }
 
-    return res.json({ 
-      isValid: true, 
-      message: "Topic is valid for quiz generation" 
+    return res.json({
+      isValid: true,
+      message: "Topic is valid for quiz generation",
     });
   } catch (error: any) {
     console.error("OpenAI API error:", error);
@@ -246,22 +251,30 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           return null;
         }
 
-        const questionTextMatch = block.match(/###\s+Question\s+\d+\s*\n(.+?)(?=\n[A-D]\))/s);
-        const questionText = questionTextMatch ? questionTextMatch[1]?.trim() : "";
+        const questionTextMatch = block.match(
+          /###\s+Question\s+\d+\s*\n(.+?)(?=\n[A-D]\))/s,
+        );
+        const questionText = questionTextMatch
+          ? questionTextMatch[1]?.trim()
+          : "";
 
         if (!questionText) {
           console.warn(`Question ${index + 1} has no text. Skipping.`);
           return null;
         }
 
-        const optionMatches = Array.from(block.matchAll(/^([A-D])\)\s*(.+?)(?=\n[A-D]\)|\n\n|✅|Explanation:|$)/gm));
+        const optionMatches = Array.from(
+          block.matchAll(
+            /^([A-D])\)\s*(.+?)(?=\n[A-D]\)|\n\n|✅|Explanation:|$)/gm,
+          ),
+        );
         const options: string[] = [];
         const optionMap: { [key: string]: string } = {};
 
         for (const match of optionMatches) {
           const letter = match[1];
           const optionText = match[2]?.trim() || "";
-          
+
           if (letter && optionText) {
             options.push(optionText);
             optionMap[letter] = optionText;
@@ -277,8 +290,8 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
 
         const validOptions = options
           .slice(0, OPTIONS_PER_QUESTION)
-          .map(opt => opt.trim())
-          .filter(opt => opt.length > 0);
+          .map((opt) => opt.trim())
+          .filter((opt) => opt.length > 0);
 
         if (validOptions.length < OPTIONS_PER_QUESTION) {
           console.warn(
@@ -287,13 +300,15 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           return null;
         }
 
-        const correctAnswerMatch = block.match(/✅\s*Correct answer:\s*([A-D])\)\s*(.+?)(?=\n|$)/);
+        const correctAnswerMatch = block.match(
+          /✅\s*Correct answer:\s*([A-D])\)\s*(.+?)(?=\n|$)/,
+        );
         let correctAnswer = "";
-        
+
         if (correctAnswerMatch && correctAnswerMatch[1]) {
           const answerLetter = correctAnswerMatch[1];
           const answerText = correctAnswerMatch[2]?.trim();
-          
+
           if (answerLetter && optionMap[answerLetter]) {
             correctAnswer = optionMap[answerLetter];
           } else if (answerText) {
@@ -308,21 +323,30 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           return null;
         }
 
-        const explanationMatch = block.match(/Explanation:\s*(.+?)(?=\n\n|###|$)/s);
+        const explanationMatch = block.match(
+          /Explanation:\s*(.+?)(?=\n\n|###|$)/s,
+        );
         const explanation = explanationMatch ? explanationMatch[1]?.trim() : "";
 
         const normalizedCorrect = correctAnswer.trim().replace(/\s+/g, " ");
 
         const correctMatchesOption = validOptions.some(
           (opt) =>
-            opt.toLowerCase().trim() === normalizedCorrect.toLowerCase().trim() ||
-            opt.toLowerCase().trim().includes(normalizedCorrect.toLowerCase().trim()) ||
-            normalizedCorrect.toLowerCase().trim().includes(opt.toLowerCase().trim())
+            opt.toLowerCase().trim() ===
+              normalizedCorrect.toLowerCase().trim() ||
+            opt
+              .toLowerCase()
+              .trim()
+              .includes(normalizedCorrect.toLowerCase().trim()) ||
+            normalizedCorrect
+              .toLowerCase()
+              .trim()
+              .includes(opt.toLowerCase().trim()),
         );
 
         if (!correctMatchesOption) {
           console.warn(
-            `Question ${index + 1}: Correct answer "${normalizedCorrect}" doesn't match any option. Options: ${validOptions.join(", ")}`
+            `Question ${index + 1}: Correct answer "${normalizedCorrect}" doesn't match any option. Options: ${validOptions.join(", ")}`,
           );
         }
 
@@ -331,14 +355,16 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           type: QuestionType.MULTIPLE_CHOICE,
           options: validOptions,
           correct: normalizedCorrect,
-          explanation: explanation && explanation.length > 0 ? explanation : undefined,
+          explanation:
+            explanation && explanation.length > 0 ? explanation : undefined,
         };
       })
-      .filter((q): q is NonNullable<typeof q> =>
-        q !== null &&
-        q.text.length > 0 &&
-        q.options.length === OPTIONS_PER_QUESTION &&
-        q.correct.length > 0
+      .filter(
+        (q): q is NonNullable<typeof q> =>
+          q !== null &&
+          q.text.length > 0 &&
+          q.options.length === OPTIONS_PER_QUESTION &&
+          q.correct.length > 0,
       );
 
     if (questions.length === 0) {
@@ -412,7 +438,10 @@ export const testCreateQuiz = async (req: Request, res: Response) => {
   return res.json(parsedQuiz);
 };
 
-export const createQuiz = async (req: Request & { user?: any }, res: Response) => {
+export const createQuiz = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const {
       title,
@@ -421,7 +450,7 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
       quizType,
       timer,
       topicId,
-      topic
+      topic,
     } = req.body;
 
     if (!req.user || !req.user.id) {
@@ -461,7 +490,7 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
     const model = (req.body as any).validatedModel || "gpt-3.5-turbo";
 
     const response = await client.chat.completions.create({
-      model: model, 
+      model: model,
       temperature: 0.1,
       messages: [
         {
@@ -541,11 +570,13 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
 
     if (parsedQuiz.questions.length < questionCount) {
       console.warn(
-        `Expected ${questionCount} questions but only ${parsedQuiz.questions.length} passed validation. Some questions were missing required options.`
+        `Expected ${questionCount} questions but only ${parsedQuiz.questions.length} passed validation. Some questions were missing required options.`,
       );
     }
 
-    const explanationCount = parsedQuiz.questions.filter(q => q.explanation && q.explanation.length > 0).length;
+    const explanationCount = parsedQuiz.questions.filter(
+      (q) => q.explanation && q.explanation.length > 0,
+    ).length;
     if (explanationCount < parsedQuiz.questions.length) {
       return res.status(400).json({
         error: "Quiz validation failed",
@@ -556,11 +587,15 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
     }
 
     const invalidQuestions = parsedQuiz.questions.filter(
-      (q) => q.options.length !== 4 || q.options.some(opt => !opt || opt.trim().length === 0)
+      (q) =>
+        q.options.length !== 4 ||
+        q.options.some((opt) => !opt || opt.trim().length === 0),
     );
 
     if (invalidQuestions.length > 0) {
-      console.error(`Found ${invalidQuestions.length} questions with invalid options. Questions must have exactly 4 non-empty options.`);
+      console.error(
+        `Found ${invalidQuestions.length} questions with invalid options. Questions must have exactly 4 non-empty options.`,
+      );
       return res.status(400).json({
         error: "Quiz validation failed",
         message: `Some questions are missing options. Each question must have exactly 4 options. Please try generating the quiz again.`,
@@ -570,15 +605,21 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
 
     const questionsWithInvalidAnswers = parsedQuiz.questions
       .map((q, index) => {
-        const normalizedOptions = q.options.map(opt => opt.trim().toLowerCase().replace(/\s+/g, ' '));
-        const normalizedCorrect = q.correct.trim().toLowerCase().replace(/\s+/g, ' ');
-        
-        const exactMatch = normalizedOptions.includes(normalizedCorrect);
-        
-        const partialMatch = normalizedOptions.some(opt => 
-          opt.includes(normalizedCorrect) || normalizedCorrect.includes(opt)
+        const normalizedOptions = q.options.map((opt) =>
+          opt.trim().toLowerCase().replace(/\s+/g, " "),
         );
-        
+        const normalizedCorrect = q.correct
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " ");
+
+        const exactMatch = normalizedOptions.includes(normalizedCorrect);
+
+        const partialMatch = normalizedOptions.some(
+          (opt) =>
+            opt.includes(normalizedCorrect) || normalizedCorrect.includes(opt),
+        );
+
         if (!exactMatch && !partialMatch) {
           return {
             questionIndex: index + 1,
@@ -589,30 +630,42 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
             normalizedOptions,
           };
         }
-        
+
         if (!exactMatch && partialMatch) {
-          const matchedOption = q.options.find(opt => 
-            opt.trim().toLowerCase().replace(/\s+/g, ' ').includes(normalizedCorrect) ||
-            normalizedCorrect.includes(opt.trim().toLowerCase().replace(/\s+/g, ' '))
+          const matchedOption = q.options.find(
+            (opt) =>
+              opt
+                .trim()
+                .toLowerCase()
+                .replace(/\s+/g, " ")
+                .includes(normalizedCorrect) ||
+              normalizedCorrect.includes(
+                opt.trim().toLowerCase().replace(/\s+/g, " "),
+              ),
           );
           if (matchedOption) {
             q.correct = matchedOption.trim();
           }
         }
-        
+
         return null;
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
 
     if (questionsWithInvalidAnswers.length > 0) {
-      console.error(`Found ${questionsWithInvalidAnswers.length} questions where correct answer doesn't match any option.`);
-      console.error('Invalid questions:', JSON.stringify(questionsWithInvalidAnswers, null, 2));
+      console.error(
+        `Found ${questionsWithInvalidAnswers.length} questions where correct answer doesn't match any option.`,
+      );
+      console.error(
+        "Invalid questions:",
+        JSON.stringify(questionsWithInvalidAnswers, null, 2),
+      );
       return res.status(400).json({
         error: "Quiz validation failed",
         message: `Some questions have correct answers that don't match any of the provided options. Please try generating the quiz again.`,
         invalidAnswersCount: questionsWithInvalidAnswers.length,
-        details: questionsWithInvalidAnswers.map(q => ({
-          question: q.questionText.substring(0, 50) + '...',
+        details: questionsWithInvalidAnswers.map((q) => ({
+          question: q.questionText.substring(0, 50) + "...",
           correctAnswer: q.correctAnswer,
           options: q.options,
         })),
@@ -625,7 +678,10 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
         type: (quizType as QuizType) || QuizType.MULTIPLE_CHOICE,
         difficulty: parsedQuiz.difficulty,
         count: parsedQuiz.questions.length,
-        timer: timer !== undefined && timer !== null && timer > 0 ? Number(timer) : null,
+        timer:
+          timer !== undefined && timer !== null && timer > 0
+            ? Number(timer)
+            : null,
         status: QuizStatus.PENDING,
         topicId,
         userId: req.user.id,
@@ -681,7 +737,6 @@ export const createQuiz = async (req: Request & { user?: any }, res: Response) =
   }
 };
 
-
 export const getQuiz = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -734,8 +789,10 @@ export const getQuiz = async (req: Request, res: Response) => {
   }
 };
 
-
-export const submitAnswers = async (req: Request & { user?: any }, res: Response) => {
+export const submitAnswers = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { quizId } = req.params;
     const { answers, timeSpent, attemptId } = req.body;
@@ -788,7 +845,9 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
       },
     );
 
-    const correctCount = results.filter((r: any) => r.isCorrect && !r.error).length;
+    const correctCount = results.filter(
+      (r: any) => r.isCorrect && !r.error,
+    ).length;
     const totalQuestions = quiz.questions.length;
     const score = (correctCount / totalQuestions) * 100;
 
@@ -834,19 +893,23 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
           completedAt: new Date(),
           pausedAt: null,
           answers: {
-            create: answers.map((answer: { questionId: string; userAnswer: string }) => {
-              const question = quiz.questions.find((q) => q.id === answer.questionId);
-              const isCorrect =
-                question?.correct?.toLowerCase().trim() ===
-                answer.userAnswer.toLowerCase().trim();
+            create: answers.map(
+              (answer: { questionId: string; userAnswer: string }) => {
+                const question = quiz.questions.find(
+                  (q) => q.id === answer.questionId,
+                );
+                const isCorrect =
+                  question?.correct?.toLowerCase().trim() ===
+                  answer.userAnswer.toLowerCase().trim();
 
-              return {
-                questionId: answer.questionId,
-                userId: req.user.id,
-                userAnswer: answer.userAnswer,
-                isCorrect: isCorrect || false,
-              };
-            }),
+                return {
+                  questionId: answer.questionId,
+                  userId: req.user.id,
+                  userAnswer: answer.userAnswer,
+                  isCorrect: isCorrect || false,
+                };
+              },
+            ),
           },
         },
         include: {
@@ -874,19 +937,23 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
           timeSpent: timeSpent ? Number(timeSpent) : null,
           completedAt: new Date(),
           answers: {
-            create: answers.map((answer: { questionId: string; userAnswer: string }) => {
-              const question = quiz.questions.find((q) => q.id === answer.questionId);
-              const isCorrect =
-                question?.correct?.toLowerCase().trim() ===
-                answer.userAnswer.toLowerCase().trim();
+            create: answers.map(
+              (answer: { questionId: string; userAnswer: string }) => {
+                const question = quiz.questions.find(
+                  (q) => q.id === answer.questionId,
+                );
+                const isCorrect =
+                  question?.correct?.toLowerCase().trim() ===
+                  answer.userAnswer.toLowerCase().trim();
 
-              return {
-                questionId: answer.questionId,
-                userId: req.user.id,
-                userAnswer: answer.userAnswer,
-                isCorrect: isCorrect || false,
-              };
-            }),
+                return {
+                  questionId: answer.questionId,
+                  userId: req.user.id,
+                  userAnswer: answer.userAnswer,
+                  isCorrect: isCorrect || false,
+                };
+              },
+            ),
           },
         },
         include: {
@@ -903,10 +970,10 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
       });
     }
 
--    await prisma.quiz.update({
+    -(await prisma.quiz.update({
       where: { id: quizId },
       data: { status: QuizStatus.COMPLETED },
-    });
+    }));
 
     return res.json({
       attemptId: attempt.id,
@@ -928,7 +995,10 @@ export const submitAnswers = async (req: Request & { user?: any }, res: Response
 };
 
 // Pause a quiz attempt - save current progress
-export const pauseQuiz = async (req: Request & { user?: any }, res: Response) => {
+export const pauseQuiz = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { quizId } = req.params;
     const { answers, elapsedTime } = req.body;
@@ -988,12 +1058,14 @@ export const pauseQuiz = async (req: Request & { user?: any }, res: Response) =>
             elapsedTime: elapsedTime ? Number(elapsedTime) : null,
             totalQuestions: quiz.questions.length,
             answers: {
-              create: answers.map((answer: { questionId: string; userAnswer: string }) => ({
-                questionId: answer.questionId,
-                userId: req.user.id,
-                userAnswer: answer.userAnswer,
-                isCorrect: false, // Will be calculated on completion
-              })),
+              create: answers.map(
+                (answer: { questionId: string; userAnswer: string }) => ({
+                  questionId: answer.questionId,
+                  userId: req.user.id,
+                  userAnswer: answer.userAnswer,
+                  isCorrect: false, // Will be calculated on completion
+                }),
+              ),
             },
           },
           include: {
@@ -1018,12 +1090,14 @@ export const pauseQuiz = async (req: Request & { user?: any }, res: Response) =>
             elapsedTime: elapsedTime ? Number(elapsedTime) : null,
             totalQuestions: quiz.questions.length,
             answers: {
-              create: answers.map((answer: { questionId: string; userAnswer: string }) => ({
-                questionId: answer.questionId,
-                userId: req.user.id,
-                userAnswer: answer.userAnswer,
-                isCorrect: false, 
-              })),
+              create: answers.map(
+                (answer: { questionId: string; userAnswer: string }) => ({
+                  questionId: answer.questionId,
+                  userId: req.user.id,
+                  userAnswer: answer.userAnswer,
+                  isCorrect: false,
+                }),
+              ),
             },
           },
           include: {
@@ -1049,11 +1123,17 @@ export const pauseQuiz = async (req: Request & { user?: any }, res: Response) =>
       elapsedTime: attempt.elapsedTime,
       answeredQuestions: attempt.answers.length,
       totalQuestions: attempt.totalQuestions,
-      savedAnswers: attempt.answers.map((a) => ({
-        questionId: a.questionId,
-        questionText: a.question.text,
-        userAnswer: a.userAnswer,
-      })),
+      savedAnswers: attempt.answers.map(
+        (a: {
+          questionId: string;
+          question: { text: string };
+          userAnswer: string;
+        }) => ({
+          questionId: a.questionId,
+          questionText: a.question.text,
+          userAnswer: a.userAnswer,
+        }),
+      ),
     });
   } catch (error: any) {
     console.error("Pause quiz error:", error);
@@ -1064,7 +1144,10 @@ export const pauseQuiz = async (req: Request & { user?: any }, res: Response) =>
 };
 
 // Resume a paused quiz attempt
-export const resumeQuiz = async (req: Request & { user?: any }, res: Response) => {
+export const resumeQuiz = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { quizId } = req.params;
 
@@ -1138,7 +1221,10 @@ export const resumeQuiz = async (req: Request & { user?: any }, res: Response) =
 
     // Map saved answers by questionId for easy lookup
     const savedAnswersMap = new Map(
-      attempt.answers.map((a) => [a.questionId, a.userAnswer])
+      attempt.answers.map((a: { questionId: string; userAnswer: string }) => [
+        a.questionId,
+        a.userAnswer,
+      ]),
     );
 
     // Return quiz with saved answers
@@ -1150,13 +1236,20 @@ export const resumeQuiz = async (req: Request & { user?: any }, res: Response) =
       elapsedTime: attempt.elapsedTime,
       totalQuestions: attempt.totalQuestions,
       answeredQuestions: attempt.answers.length,
-      questions: quiz.questions.map((q) => ({
-        id: q.id,
-        text: q.text,
-        type: q.type,
-        options: q.options,
-        savedAnswer: savedAnswersMap.get(q.id) || null,
-      })),
+      questions: quiz.questions.map(
+        (q: {
+          id: string;
+          text: string;
+          type: QuestionType;
+          options: Prisma.JsonValue;
+        }) => ({
+          id: q.id,
+          text: q.text,
+          type: q.type,
+          options: q.options,
+          savedAnswer: savedAnswersMap.get(q.id) || null,
+        }),
+      ),
     });
   } catch (error: any) {
     console.error("Resume quiz error:", error);
@@ -1166,7 +1259,10 @@ export const resumeQuiz = async (req: Request & { user?: any }, res: Response) =
   }
 };
 
-export const deleteQuiz = async (req: Request & { user?: any }, res: Response) => {
+export const deleteQuiz = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
     const { id } = req.params;
 
@@ -1192,20 +1288,22 @@ export const deleteQuiz = async (req: Request & { user?: any }, res: Response) =
     }
 
     if (quiz.userId !== req.user.id) {
-      return res.status(403).json({ error: "You don't have permission to delete this quiz" });
+      return res
+        .status(403)
+        .json({ error: "You don't have permission to delete this quiz" });
     }
 
     const questions = await prisma.question.findMany({
       where: { quizId: id },
       select: { id: true },
     });
-    const questionIds = questions.map((q) => q.id);
+    const questionIds = questions.map((q: { id: string }) => q.id);
 
     const attempts = await prisma.quizAttempt.findMany({
       where: { quizId: id },
       select: { id: true },
     });
-    const attemptIds = attempts.map((a) => a.id);
+    const attemptIds = attempts.map((a: { id: string }) => a.id);
 
     await prisma.$transaction([
       prisma.answer.deleteMany({
@@ -1259,4 +1357,3 @@ export const deleteQuiz = async (req: Request & { user?: any }, res: Response) =
       .json({ error: "Failed to delete quiz", message: error.message });
   }
 };
-

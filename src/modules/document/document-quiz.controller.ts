@@ -11,7 +11,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-
 export const getDocumentQuizzes = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -89,7 +88,7 @@ export const generateQuizFromDocument = async (
       questionCount = 10,
       quizType = "MULTIPLE_CHOICE",
       timer,
-      focus, 
+      focus,
     } = req.body;
 
     const document = await prisma.document.findFirst({
@@ -125,18 +124,15 @@ export const generateQuizFromDocument = async (
       include: { plan: true },
     });
 
-    const allowedModels =
-      subscription?.allowedModels ||
-      subscription?.plan?.allowedModels ||
-      ["gpt-3.5-turbo"];
+    const allowedModels = subscription?.allowedModels ||
+      subscription?.plan?.allowedModels || ["gpt-3.5-turbo"];
 
     const model = allowedModels[0] || "gpt-3.5-turbo";
-    
+
     if (!model) {
       return res.status(400).json({ error: "No AI model available" });
-    } 
+    }
 
-  
     let documentContext = "";
     let relevantChunks: any[] = [];
 
@@ -147,7 +143,8 @@ export const generateQuizFromDocument = async (
 
       if (embeddingCount === 0) {
         return res.status(400).json({
-          error: "Document has no embeddings. Please wait for document processing to complete.",
+          error:
+            "Document has no embeddings. Please wait for document processing to complete.",
           documentStatus: document.status,
           vectorized: document.vectorized,
         });
@@ -163,10 +160,10 @@ export const generateQuizFromDocument = async (
       console.log(
         `Searching for similar chunks in document ${documentId} (${embeddingCount} embeddings available)`,
       );
-      
+
       let chunks: any[] = [];
       let similarityThreshold = 0.6;
-      
+
       chunks = await findSimilarChunks(
         documentId as string,
         queryEmbedding,
@@ -174,10 +171,14 @@ export const generateQuizFromDocument = async (
         similarityThreshold,
       );
 
-      console.log(`Found ${chunks.length} similar chunks with threshold ${similarityThreshold}`);
+      console.log(
+        `Found ${chunks.length} similar chunks with threshold ${similarityThreshold}`,
+      );
 
       if (chunks.length === 0) {
-        console.log("No chunks found with threshold 0.6, trying lower threshold 0.3...");
+        console.log(
+          "No chunks found with threshold 0.6, trying lower threshold 0.3...",
+        );
         similarityThreshold = 0.3;
         chunks = await findSimilarChunks(
           documentId as string,
@@ -185,11 +186,15 @@ export const generateQuizFromDocument = async (
           Math.min(questionCount * 2, 20),
           similarityThreshold,
         );
-        console.log(`Found ${chunks.length} similar chunks with threshold ${similarityThreshold}`);
+        console.log(
+          `Found ${chunks.length} similar chunks with threshold ${similarityThreshold}`,
+        );
       }
 
       if (chunks.length === 0) {
-        console.log("Still no chunks found, trying to get any chunks from document...");
+        console.log(
+          "Still no chunks found, trying to get any chunks from document...",
+        );
         const allChunks = await prisma.documentEmbedding.findMany({
           where: { documentId: document.id },
           orderBy: { chunkIndex: "asc" },
@@ -201,7 +206,7 @@ export const generateQuizFromDocument = async (
             metadata: true,
           },
         });
-        
+
         if (allChunks.length > 0) {
           chunks = allChunks.map((chunk) => ({
             id: chunk.id,
@@ -210,7 +215,9 @@ export const generateQuizFromDocument = async (
             similarity: 0.5,
             metadata: chunk.metadata,
           }));
-          console.log(`Using ${chunks.length} chunks from document (no similarity match found)`);
+          console.log(
+            `Using ${chunks.length} chunks from document (no similarity match found)`,
+          );
         }
       }
 
@@ -335,7 +342,10 @@ STRICT RULES:
         questions: {
           create: parsedQuiz.questions.map((q) => ({
             text: q.text,
-            type: quizType === "MULTIPLE_CHOICE" ? "MULTIPLE_CHOICE" : "SHORT_ANSWER",
+            type:
+              quizType === "MULTIPLE_CHOICE"
+                ? "MULTIPLE_CHOICE"
+                : "SHORT_ANSWER",
             options: q.options ? JSON.stringify(q.options) : undefined,
             correct: q.correct,
             explanation: q.explanation
@@ -404,13 +414,16 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
     const questionBlocks = quizText.split(/### Question \d+/).filter(Boolean);
 
     for (const block of questionBlocks) {
-      const lines = block.trim().split("\n").filter((line) => line.trim());
+      const lines = block
+        .trim()
+        .split("\n")
+        .filter((line) => line.trim());
 
       if (lines.length === 0) continue;
 
       const firstLine = lines[0];
       if (!firstLine) continue;
-      
+
       let questionText = firstLine.trim();
       if (!questionText) continue;
 
@@ -425,7 +438,7 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           i++;
           continue;
         }
-        
+
         const line = currentLine.trim();
 
         const optionMatch = line.match(/^([A-D])\)\s*(.+)$/);
@@ -442,7 +455,11 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
           const letter = correctMatch[1];
           const answerText = correctMatch[2].trim();
           const optionIndex = letter.charCodeAt(0) - 65;
-          if (optionIndex >= 0 && optionIndex < options.length && options[optionIndex]) {
+          if (
+            optionIndex >= 0 &&
+            optionIndex < options.length &&
+            options[optionIndex]
+          ) {
             correctAnswer = options[optionIndex];
           } else {
             correctAnswer = answerText;

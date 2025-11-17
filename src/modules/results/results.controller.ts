@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
-import { AttemptStatus } from "@prisma/client";
+import { AttemptStatus, Difficulty } from "@prisma/client";
 
 export const getQuizResult = async (
   req: Request & { user?: any },
@@ -95,14 +95,25 @@ export const getQuizResult = async (
       timeSpent: attempt.timeSpent,
       completedAt: attempt.completedAt,
       createdAt: attempt.createdAt,
-      answers: attempt.answers.map((answer) => ({
-        questionId: answer.questionId,
-        questionText: answer.question.text,
-        userAnswer: answer.userAnswer,
-        correctAnswer: answer.question.correct,
-        isCorrect: answer.isCorrect,
-        explanation: answer.question.explanation?.content || null,
-      })),
+      answers: attempt.answers.map(
+        (answer: {
+          questionId: string;
+          question: {
+            text: string;
+            correct: string | null;
+            explanation?: { content: string } | null;
+          };
+          userAnswer: string;
+          isCorrect: boolean;
+        }) => ({
+          questionId: answer.questionId,
+          questionText: answer.question.text,
+          userAnswer: answer.userAnswer,
+          correctAnswer: answer.question.correct,
+          isCorrect: answer.isCorrect,
+          explanation: answer.question.explanation?.content || null,
+        }),
+      ),
     };
 
     return res.json({ result });
@@ -177,14 +188,25 @@ export const getResult = async (
       timeSpent: attempt.timeSpent,
       completedAt: attempt.completedAt,
       createdAt: attempt.createdAt,
-      answers: attempt.answers.map((answer) => ({
-        questionId: answer.questionId,
-        questionText: answer.question.text,
-        userAnswer: answer.userAnswer,
-        correctAnswer: answer.question.correct,
-        isCorrect: answer.isCorrect,
-        explanation: answer.question.explanation?.content || null,
-      })),
+      answers: attempt.answers.map(
+        (answer: {
+          questionId: string;
+          question: {
+            text: string;
+            correct: string | null;
+            explanation?: { content: string } | null;
+          };
+          userAnswer: string;
+          isCorrect: boolean;
+        }) => ({
+          questionId: answer.questionId,
+          questionText: answer.question.text,
+          userAnswer: answer.userAnswer,
+          correctAnswer: answer.question.correct,
+          isCorrect: answer.isCorrect,
+          explanation: answer.question.explanation?.content || null,
+        }),
+      ),
     };
 
     return res.json({ result });
@@ -244,15 +266,30 @@ export const listResults = async (
     ]);
 
     return res.json({
-      attempts: attempts.map((attempt) => ({
-        id: attempt.id,
-        quiz: attempt.quiz,
-        score: attempt.score,
-        correctCount: attempt.correctCount,
-        totalQuestions: attempt.totalQuestions,
-        timeSpent: attempt.timeSpent,
-        completedAt: attempt.completedAt,
-      })),
+      attempts: attempts.map(
+        (attempt: {
+          id: string;
+          quiz: {
+            id: string;
+            title: string;
+            difficulty: Difficulty;
+            topic: { id: string; name: string } | null;
+          };
+          score: number | null;
+          correctCount: number | null;
+          totalQuestions: number;
+          timeSpent: number | null;
+          completedAt: Date | null;
+        }) => ({
+          id: attempt.id,
+          quiz: attempt.quiz,
+          score: attempt.score,
+          correctCount: attempt.correctCount,
+          totalQuestions: attempt.totalQuestions,
+          timeSpent: attempt.timeSpent,
+          completedAt: attempt.completedAt,
+        }),
+      ),
       total,
       limit: Number(limit),
       offset: Number(offset),
@@ -333,7 +370,7 @@ export const getUserStats = async (
       }),
     ]);
 
-    const quizIdsWithTimer = quizzesWithTimer.map((q) => q.id);
+    const quizIdsWithTimer = quizzesWithTimer.map((q: { id: string }) => q.id);
     const totalTimeSet = { _sum: { timer: timeSetStats._sum.timer } };
     const averageTimeSet = { _avg: { timer: timeSetStats._avg.timer } };
 
@@ -351,8 +388,12 @@ export const getUserStats = async (
           })
         : { _sum: { timeSpent: null }, _avg: { timeSpent: null } };
 
-    const totalTimeSpent = { _sum: { timeSpent: timeSpentStats._sum.timeSpent } };
-    const averageTimeSpent = { _avg: { timeSpent: timeSpentStats._avg.timeSpent } };
+    const totalTimeSpent = {
+      _sum: { timeSpent: timeSpentStats._sum.timeSpent },
+    };
+    const averageTimeSpent = {
+      _avg: { timeSpent: timeSpentStats._avg.timeSpent },
+    };
 
     const attemptsByDifficulty = await prisma.quizAttempt.groupBy({
       by: ["quizId"],
@@ -363,7 +404,9 @@ export const getUserStats = async (
 
     const quizDetails = await prisma.quiz.findMany({
       where: {
-        id: { in: attemptsByDifficulty.map((a) => a.quizId) },
+        id: {
+          in: attemptsByDifficulty.map((a: { quizId: string }) => a.quizId),
+        },
       },
       select: {
         id: true,
@@ -374,19 +417,27 @@ export const getUserStats = async (
       },
     });
 
-    const attemptsWithDetails = attemptsByDifficulty.map((attempt) => {
-      const quiz = quizDetails.find((q) => q.id === attempt.quizId);
-      return {
-        quizId: attempt.quizId,
-        quizTitle: quiz?.title || "Unknown",
-        quizDifficulty: quiz?.difficulty || null,
-        topicName: quiz?.topic?.name || null,
-        attemptCount: attempt._count.id,
-        averageScore: attempt._avg.score || 0,
-        averageTimeSpent: attempt._avg.timeSpent || null,
-        timeSet: quiz?.timer || null,
-      };
-    });
+    const attemptsWithDetails = attemptsByDifficulty.map(
+      (attempt: {
+        quizId: string;
+        _count: { id: number };
+        _avg: { score: number | null; timeSpent: number | null };
+      }) => {
+        const quiz = quizDetails.find(
+          (q: { id: string }) => q.id === attempt.quizId,
+        );
+        return {
+          quizId: attempt.quizId,
+          quizTitle: quiz?.title || "Unknown",
+          quizDifficulty: quiz?.difficulty || null,
+          topicName: quiz?.topic?.name || null,
+          attemptCount: attempt._count.id,
+          averageScore: attempt._avg.score || 0,
+          averageTimeSpent: attempt._avg.timeSpent || null,
+          timeSet: quiz?.timer || null,
+        };
+      },
+    );
 
     const recentAttempts = await prisma.quizAttempt.findMany({
       where: { userId, status: AttemptStatus.COMPLETED },
@@ -470,39 +521,71 @@ export const getUserStats = async (
       },
     });
 
-    const topicsProgress = topicsWithProgress.map((topic) => {
-      const allQuizzes = topic.quizzes;
-      const totalQuizzes = allQuizzes.length;
-      const completedQuizzes = allQuizzes.filter(
-        (q) => q.attempts && q.attempts.length > 0,
-      ).length;
-      const allScores = allQuizzes.flatMap((q) => q.attempts.map((a) => a.score));
-      const averageScore =
-        allScores.length > 0
-          ? (allScores?.reduce((sum: number | null, score: number | null) => sum ? sum + (score || 0) : 0, 0) || 0) / allScores.length
-          : 0;
+    const topicsProgress = topicsWithProgress.map(
+      (topic: {
+        id: string;
+        name: string;
+        quizzes: Array<{
+          attempts: Array<{ score: number | null; completedAt: Date | null }>;
+        }>;
+      }) => {
+        const allQuizzes = topic.quizzes;
+        const totalQuizzes = allQuizzes.length;
+        const completedQuizzes = allQuizzes.filter(
+          (q: { attempts: Array<any> }) => q.attempts && q.attempts.length > 0,
+        ).length;
+        const allScores = allQuizzes.flatMap(
+          (q: { attempts: Array<{ score: number | null }> }) =>
+            q.attempts.map((a: { score: number | null }) => a.score || 0),
+        );
+        const averageScore =
+          allScores.length > 0
+            ? (allScores?.reduce(
+                (sum: number | null, score: number | null) =>
+                  sum ? sum + (score || 0) : 0,
+                0,
+              ) || 0) / allScores.length
+            : 0;
 
-      const allAttemptDates = allQuizzes
-        .flatMap((q: { attempts: any[]; }) => q.attempts.map((a) => a.completedAt))
-        .filter((date): date is Date => date !== null);
+        const allAttemptDates = allQuizzes
+          .flatMap((q: { attempts: Array<{ completedAt: Date | null }> }) =>
+            q.attempts.map((a: { completedAt: Date | null }) => a.completedAt),
+          )
+          .filter((date: Date | null): date is Date => date !== null);
 
-      return {
-        topicId: topic.id,
-        topicName: topic.name,
-        totalQuizzes,
-        completedQuizzes,
-        progressPercentage: totalQuizzes > 0 ? Math.round((completedQuizzes / totalQuizzes) * 100) : 0,
-        averageScore: Math.round(averageScore * 100) / 100,
-        lastAttemptAt:
-          allAttemptDates.length > 0
-            ? allAttemptDates.sort((a, b) => b.getTime() - a.getTime())[0]
-            : null,
-      };
-    });
+        return {
+          topicId: topic.id,
+          topicName: topic.name,
+          totalQuizzes,
+          completedQuizzes,
+          progressPercentage:
+            totalQuizzes > 0
+              ? Math.round((completedQuizzes / totalQuizzes) * 100)
+              : 0,
+          averageScore: Math.round(averageScore * 100) / 100,
+          lastAttemptAt:
+            allAttemptDates.length > 0
+              ? allAttemptDates.sort(
+                  (a: Date, b: Date) => b.getTime() - a.getTime(),
+                )[0]
+              : null,
+        };
+      },
+    );
 
     const getTimeSeriesData = async (days: number) => {
       const now = new Date();
-      const endDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+      const endDate = new Date(
+        Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate(),
+          23,
+          59,
+          59,
+          999,
+        ),
+      );
       const startDate = new Date(endDate);
       startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
       startDate.setUTCHours(0, 0, 0, 0);
@@ -524,40 +607,45 @@ export const getUserStats = async (
       });
 
       const dailyData: { [key: string]: number[] } = {};
-      attempts.forEach((attempt) => {
-        if (attempt.completedAt) {
-          const attemptDate = new Date(attempt.completedAt);
-          const dateKey = attemptDate.toISOString().split("T")[0];
-          if (dateKey) {
-            if (!dailyData[dateKey]) {
-              dailyData[dateKey] = [];
+      attempts.forEach(
+        (attempt: { completedAt: Date | null; score: number | null }) => {
+          if (attempt.completedAt) {
+            const attemptDate = new Date(attempt.completedAt);
+            const dateKey = attemptDate.toISOString().split("T")[0];
+            if (dateKey) {
+              if (!dailyData[dateKey]) {
+                dailyData[dateKey] = [];
+              }
+              dailyData[dateKey].push(attempt.score || 0);
             }
-            dailyData[dateKey].push(attempt.score || 0);
           }
-        }
-      });
+        },
+      );
 
       const result: Array<{
         date: string;
         averageScore: number | null;
         attemptCount: number;
       }> = [];
-      
+
       for (let i = 0; i < days; i++) {
         const date = new Date(startDate);
         date.setUTCDate(startDate.getUTCDate() + i);
         const dateKey = date.toISOString().split("T")[0];
-        
+
         if (dateKey) {
           const scores = dailyData[dateKey] || [];
           const averageScore =
             scores.length > 0
-              ? scores.reduce((sum: number, s: number) => sum + s, 0) / scores.length
+              ? scores.reduce((sum: number, s: number) => sum + s, 0) /
+                scores.length
               : null;
 
           result.push({
             date: dateKey,
-            averageScore: averageScore ? Math.round(averageScore * 100) / 100 : null,
+            averageScore: averageScore
+              ? Math.round(averageScore * 100) / 100
+              : null,
             attemptCount: scores.length,
           });
         }
@@ -573,9 +661,12 @@ export const getUserStats = async (
         getTimeSeriesData(90),
       ]);
 
-    const overallProgress = Math.round((averageScore._avg?.score || 0) * 100) / 100;
-    const thisWeekProgress = Math.round((thisWeekAverageScore._avg?.score || 0) * 100) / 100;
-    const lastWeekProgress = Math.round((lastWeekAverageScore._avg?.score || 0) * 100) / 100;
+    const overallProgress =
+      Math.round((averageScore._avg?.score || 0) * 100) / 100;
+    const thisWeekProgress =
+      Math.round((thisWeekAverageScore._avg?.score || 0) * 100) / 100;
+    const lastWeekProgress =
+      Math.round((lastWeekAverageScore._avg?.score || 0) * 100) / 100;
     const progressChange = thisWeekProgress - lastWeekProgress;
 
     const timeEfficiency =
@@ -646,18 +737,33 @@ export const getUserStats = async (
         },
         topics: topicsProgress,
         attemptsByQuiz: attemptsWithDetails,
-        recentAttempts: recentAttempts.map((attempt) => ({
-          id: attempt.id,
-          quizId: attempt.quizId,
-          quizTitle: attempt.quiz.title,
-          quizDifficulty: attempt.quiz.difficulty,
-          topicName: attempt.quiz.topic?.name || null,
-          score: attempt.score,
-          correctCount: attempt.correctCount,
-          totalQuestions: attempt.totalQuestions,
-          timeSpent: attempt.timeSpent,
-          completedAt: attempt.completedAt,
-        })),
+        recentAttempts: recentAttempts.map(
+          (attempt: {
+            id: string;
+            quiz: {
+              id: string;
+              title: string;
+              difficulty: Difficulty;
+              topic: { name: string } | null;
+            };
+            score: number | null;
+            correctCount: number | null;
+            totalQuestions: number;
+            timeSpent: number | null;
+            completedAt: Date | null;
+          }) => ({
+            id: attempt.id,
+            quizId: attempt.quiz.id,
+            quizTitle: attempt.quiz.title,
+            quizDifficulty: attempt.quiz.difficulty,
+            topicName: attempt.quiz.topic?.name || null,
+            score: attempt.score,
+            correctCount: attempt.correctCount,
+            totalQuestions: attempt.totalQuestions,
+            timeSpent: attempt.timeSpent,
+            completedAt: attempt.completedAt,
+          }),
+        ),
       },
     });
   } catch (error: any) {

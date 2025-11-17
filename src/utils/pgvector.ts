@@ -39,7 +39,6 @@ export async function storeEmbeddings(
       `;
     }
 
- 
     await prisma.document.update({
       where: { id: documentId },
       data: { chunkCount: chunks.length },
@@ -48,7 +47,6 @@ export async function storeEmbeddings(
     throw new Error(`Failed to store embeddings: ${error.message}`);
   }
 }
-
 
 export async function findSimilarChunks(
   documentId: string,
@@ -93,7 +91,6 @@ export async function findSimilarChunks(
     throw new Error(`Failed to find similar chunks: ${error.message}`);
   }
 }
-
 
 export async function findSimilarChunksAcrossDocuments(
   documentIds: string[],
@@ -155,4 +152,3 @@ export async function deleteDocumentEmbeddings(documentId: string) {
     throw new Error(`Failed to delete embeddings: ${error.message}`);
   }
 }
-

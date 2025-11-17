@@ -68,7 +68,6 @@ async function extractTextFromPDF(buffer: Buffer): Promise<string> {
   }
 }
 
-
 async function extractTextFromWord(buffer: Buffer): Promise<string> {
   try {
     const result = await mammoth.extractRawText({ buffer });
@@ -77,7 +76,6 @@ async function extractTextFromWord(buffer: Buffer): Promise<string> {
     throw new Error(`Failed to parse Word document: ${error.message}`);
   }
 }
-
 
 export function chunkText(
   text: string,
@@ -156,4 +154,3 @@ export async function processDocument(
     chunks,
   };
 }
-

@@ -1,7 +1,6 @@
 import prisma from "./prisma";
 import { SubscriptionStatus } from "@prisma/client";
 
-
 export const getOrCreateDefaultSubscription = async (userId: string) => {
   const existing = await prisma.userSubscription.findUnique({
     where: { userId },
@@ -42,7 +41,6 @@ export const getOrCreateDefaultSubscription = async (userId: string) => {
   return subscription;
 };
 
-
 export const updateSubscriptionFromPlan = async (
   userId: string,
   planId: string,
@@ -70,7 +68,6 @@ export const updateSubscriptionFromPlan = async (
   return subscription;
 };
 
-
 export const updateSubscriptionLimits = async (
   userId: string,
   limits: {
@@ -95,4 +92,3 @@ export const updateSubscriptionLimits = async (
     include: { plan: true },
   });
 };
-

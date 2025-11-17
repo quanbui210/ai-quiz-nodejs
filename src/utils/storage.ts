@@ -13,7 +13,6 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey, {
 
 const BUCKET_NAME = process.env.SUPABASE_STORAGE_BUCKET || "documents";
 
-
 export async function uploadFileToStorage(
   filePath: string,
   fileName: string,
@@ -45,7 +44,6 @@ export async function uploadFileToStorage(
   }
 }
 
-
 export async function downloadFileFromStorage(
   storagePath: string,
   localPath: string,
@@ -67,8 +65,9 @@ export async function downloadFileFromStorage(
   }
 }
 
-
-export async function deleteFileFromStorage(storagePath: string): Promise<void> {
+export async function deleteFileFromStorage(
+  storagePath: string,
+): Promise<void> {
   try {
     const { error } = await supabase.storage
       .from(BUCKET_NAME)
@@ -87,7 +86,6 @@ export function getFileUrl(storagePath: string): string {
   return data.publicUrl;
 }
 
-
 export async function getSignedUrl(
   storagePath: string,
   expiresIn: number = 3600,
@@ -102,4 +100,3 @@ export async function getSignedUrl(
 
   return data.signedUrl;
 }
-

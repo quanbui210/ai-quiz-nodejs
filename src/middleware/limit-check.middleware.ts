@@ -9,7 +9,6 @@ export interface AuthenticatedRequest extends Request {
   file?: Express.Multer.File;
 }
 
-
 export const checkTopicLimit = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -45,7 +44,6 @@ export const checkTopicLimit = async (
     return res.status(500).json({ error: "Failed to check topic limit" });
   }
 };
-
 
 export const checkQuizLimit = async (
   req: AuthenticatedRequest,
@@ -83,7 +81,6 @@ export const checkQuizLimit = async (
   }
 };
 
-
 export const checkDocumentLimit = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -120,13 +117,12 @@ export const checkDocumentLimit = async (
   }
 };
 
-
 export const checkModelAccess = (model: string) => {
   return async (
     req: AuthenticatedRequest,
     res: Response,
     next: NextFunction,
-) => {
+  ) => {
     try {
       if (!req.user?.id) {
         return res.status(401).json({ error: "User not authenticated" });
@@ -169,7 +165,7 @@ export const validateModelFromBody = async (
 
     const model = req.body.model || "gpt-3.5-turbo"; // Default model
     const subscription = await getUserSubscription(req.user.id);
-    
+
     if (!subscription) {
       return res.status(403).json({
         error: "No subscription found",
@@ -193,4 +189,3 @@ export const validateModelFromBody = async (
     return res.status(500).json({ error: "Failed to validate model" });
   }
 };
-

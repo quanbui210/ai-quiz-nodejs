@@ -65,4 +65,3 @@ export async function generateEmbeddingsBatch(
 export function getEmbeddingDimensions(): number {
   return EMBEDDING_MODEL === "text-embedding-3-small" ? 1536 : 3072;
 }
-

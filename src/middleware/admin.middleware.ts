@@ -15,7 +15,6 @@ export interface AuthenticatedRequest extends Request {
   };
 }
 
-
 export const requireAdmin = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -44,7 +43,6 @@ export const requireAdmin = async (
     return res.status(500).json({ error: "Failed to verify admin access" });
   }
 };
-
 
 export const requireSuperAdmin = async (
   req: AuthenticatedRequest,
@@ -78,10 +76,11 @@ export const requireSuperAdmin = async (
     return next();
   } catch (error: any) {
     console.error("Super admin check error:", error);
-    return res.status(500).json({ error: "Failed to verify super admin access" });
+    return res
+      .status(500)
+      .json({ error: "Failed to verify super admin access" });
   }
 };
-
 
 export const requirePermission = (permission: string) => {
   return async (
@@ -113,4 +112,3 @@ export const requirePermission = (permission: string) => {
     }
   };
 };
-

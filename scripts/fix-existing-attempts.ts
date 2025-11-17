@@ -9,7 +9,6 @@ const prisma = new PrismaClient();
 
 async function fixExistingAttempts() {
   try {
-
     const attemptsToFix = await prisma.quizAttempt.findMany({
       where: {
         completedAt: { not: null },
@@ -22,7 +21,6 @@ async function fixExistingAttempts() {
         score: true,
       },
     });
-
 
     if (attemptsToFix.length === 0) {
       console.log("No attempts need fixing. All done!");
@@ -39,7 +37,6 @@ async function fixExistingAttempts() {
       },
     });
 
-
     const attemptsWithScore = await prisma.quizAttempt.findMany({
       where: {
         score: { not: null },
@@ -55,8 +52,10 @@ async function fixExistingAttempts() {
     });
 
     if (attemptsWithScore.length > 0) {
-      console.log(`Found ${attemptsWithScore.length} attempts with scores but no completedAt`);
-      
+      console.log(
+        `Found ${attemptsWithScore.length} attempts with scores but no completedAt`,
+      );
+
       const result2 = await prisma.quizAttempt.updateMany({
         where: {
           score: { not: null },
@@ -66,11 +65,13 @@ async function fixExistingAttempts() {
         },
         data: {
           status: AttemptStatus.COMPLETED,
-          completedAt: new Date(), 
+          completedAt: new Date(),
         },
       });
 
-      console.log(`Successfully updated ${result2.count} more attempts to COMPLETED status`);
+      console.log(
+        `Successfully updated ${result2.count} more attempts to COMPLETED status`,
+      );
     }
 
     // Verify the fix
@@ -90,7 +91,6 @@ async function fixExistingAttempts() {
     console.log(`  COMPLETED: ${completedCount}`);
     console.log(`  IN_PROGRESS: ${inProgressCount}`);
     console.log(`  PAUSED: ${pausedCount}`);
-
   } catch (error) {
     throw error;
   } finally {
@@ -105,4 +105,3 @@ fixExistingAttempts()
   .catch((error) => {
     process.exit(1);
   });
-

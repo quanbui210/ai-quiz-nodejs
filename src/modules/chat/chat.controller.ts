@@ -9,7 +9,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-
 export const createChatSession = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -43,10 +42,8 @@ export const createChatSession = async (
       include: { plan: true },
     });
 
-    const allowedModels =
-      subscription?.allowedModels ||
-      subscription?.plan?.allowedModels ||
-      ["gpt-3.5-turbo"];
+    const allowedModels = subscription?.allowedModels ||
+      subscription?.plan?.allowedModels || ["gpt-3.5-turbo"];
 
     const selectedModel = model || allowedModels[0];
 
@@ -171,10 +168,7 @@ export const createChatSession = async (
  * Send a message in a chat session (with RAG if document attached)
  * POST /api/v1/chat/sessions/:sessionId/messages
  */
-export const sendMessage = async (
-  req: AuthenticatedRequest,
-  res: Response,
-) => {
+export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -183,7 +177,11 @@ export const sendMessage = async (
     const { sessionId } = req.params;
     const { message } = req.body;
 
-    if (!message || typeof message !== "string" || message.trim().length === 0) {
+    if (
+      !message ||
+      typeof message !== "string" ||
+      message.trim().length === 0
+    ) {
       return res.status(400).json({ error: "Message is required" });
     }
 
@@ -284,8 +282,9 @@ export const sendMessage = async (
     }));
 
     // Add system prompt if document context exists
-    const systemPrompt = session.documentId && contextText
-      ? `You are an AI tutor helping a student understand a document. Use the following context from the document to answer questions accurately and thoroughly.
+    const systemPrompt =
+      session.documentId && contextText
+        ? `You are an AI tutor helping a student understand a document. Use the following context from the document to answer questions accurately and thoroughly.
 
 Context from document:
 ${contextText}
@@ -297,9 +296,9 @@ Instructions:
 - Be thorough and cite information from the context when relevant
 - If the answer truly cannot be found in the context, say "I don't have enough information in the document to answer this question."
 - Be helpful, clear, and educational`
-      : session.documentId
-        ? "You are an AI tutor helping a student understand a document. However, the document content is not yet available. Please inform the user that the document is still being processed."
-        : "You are a helpful AI tutor. Answer questions clearly and provide educational explanations.";
+        : session.documentId
+          ? "You are an AI tutor helping a student understand a document. However, the document content is not yet available. Please inform the user that the document is still being processed."
+          : "You are a helpful AI tutor. Answer questions clearly and provide educational explanations.";
 
     // Prepare messages for OpenAI
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
@@ -349,7 +348,6 @@ Instructions:
     return res.status(500).json({ error: "Failed to send message" });
   }
 };
-
 
 export const getChatSession = async (
   req: AuthenticatedRequest,
@@ -525,4 +523,3 @@ export const deleteChatSession = async (
     return res.status(500).json({ error: "Failed to delete chat session" });
   }
 };
-

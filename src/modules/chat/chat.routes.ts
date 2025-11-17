@@ -20,4 +20,3 @@ router.get("/sessions/:sessionId/messages", authenticate, getChatMessages);
 router.post("/sessions/:sessionId/messages", authenticate, sendMessage);
 
 export default router;
-

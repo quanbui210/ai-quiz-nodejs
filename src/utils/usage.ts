@@ -1,16 +1,16 @@
 import prisma from "./prisma";
 
-
 export const getUserUsage = async (userId: string) => {
   let usage = await prisma.userUsage.findUnique({
     where: { userId },
   });
 
-  const [actualTopicsCount, actualQuizzesCount, actualDocumentsCount] = await Promise.all([
-    prisma.topic.count({ where: { userId } }),
-    prisma.quiz.count({ where: { userId } }),
-    prisma.document.count({ where: { userId } }),
-  ]);
+  const [actualTopicsCount, actualQuizzesCount, actualDocumentsCount] =
+    await Promise.all([
+      prisma.topic.count({ where: { userId } }),
+      prisma.quiz.count({ where: { userId } }),
+      prisma.document.count({ where: { userId } }),
+    ]);
 
   if (!usage) {
     usage = await prisma.userUsage.create({
@@ -22,7 +22,6 @@ export const getUserUsage = async (userId: string) => {
       },
     });
   } else {
-
     const needsSync =
       usage.topicsCount !== actualTopicsCount ||
       usage.quizzesCount !== actualQuizzesCount ||
@@ -43,7 +42,6 @@ export const getUserUsage = async (userId: string) => {
   return usage;
 };
 
-
 export const incrementTopicCount = async (userId: string) => {
   await prisma.userUsage.upsert({
     where: { userId },
@@ -52,15 +50,14 @@ export const incrementTopicCount = async (userId: string) => {
   });
 };
 
-
 export const decrementTopicCount = async (userId: string) => {
-  await prisma.userUsage.update({
-    where: { userId },
-    data: { topicsCount: { decrement: 1 } },
-  }).catch(() => {
-  });
+  await prisma.userUsage
+    .update({
+      where: { userId },
+      data: { topicsCount: { decrement: 1 } },
+    })
+    .catch(() => {});
 };
-
 
 export const incrementQuizCount = async (userId: string) => {
   await prisma.userUsage.upsert({
@@ -70,15 +67,14 @@ export const incrementQuizCount = async (userId: string) => {
   });
 };
 
-
 export const decrementQuizCount = async (userId: string) => {
-  await prisma.userUsage.update({
-    where: { userId },
-    data: { quizzesCount: { decrement: 1 } },
-  }).catch(() => {
-  });
+  await prisma.userUsage
+    .update({
+      where: { userId },
+      data: { quizzesCount: { decrement: 1 } },
+    })
+    .catch(() => {});
 };
-
 
 export const incrementDocumentCount = async (userId: string) => {
   await prisma.userUsage.upsert({
@@ -88,15 +84,14 @@ export const incrementDocumentCount = async (userId: string) => {
   });
 };
 
-
 export const decrementDocumentCount = async (userId: string) => {
-  await prisma.userUsage.update({
-    where: { userId },
-    data: { documentsCount: { decrement: 1 } },
-  }).catch(() => {
-  });
+  await prisma.userUsage
+    .update({
+      where: { userId },
+      data: { documentsCount: { decrement: 1 } },
+    })
+    .catch(() => {});
 };
-
 
 export const getUserSubscription = async (userId: string) => {
   return await prisma.userSubscription.findUnique({
@@ -104,4 +99,3 @@ export const getUserSubscription = async (userId: string) => {
     include: { plan: true },
   });
 };
-

@@ -9,7 +9,6 @@ import { getUserSubscription, getUserUsage } from "../../utils/usage";
 import { AuthenticatedRequest } from "../../middleware/limit-check.middleware";
 import Stripe from "stripe";
 
-
 export const getPlans = async (req: Request, res: Response) => {
   try {
     const plans = await prisma.subscriptionPlan.findMany({
@@ -25,9 +24,12 @@ export const getPlans = async (req: Request, res: Response) => {
         if (plan.stripePriceId) {
           try {
             // Retrieve price from Stripe
-            const stripePrice = await stripe.prices.retrieve(plan.stripePriceId, {
-              expand: ['product'],
-            });
+            const stripePrice = await stripe.prices.retrieve(
+              plan.stripePriceId,
+              {
+                expand: ["product"],
+              },
+            );
 
             price = {
               id: stripePrice.id,
@@ -40,16 +42,20 @@ export const getPlans = async (req: Request, res: Response) => {
 
             const productData = stripePrice.product;
             if (productData) {
-              if (typeof productData === 'string') {
+              if (typeof productData === "string") {
                 try {
-                  const fullProduct = await stripe.products.retrieve(productData);
+                  const fullProduct =
+                    await stripe.products.retrieve(productData);
                   product = {
                     id: fullProduct.id,
                     name: fullProduct.name,
                     metadata: fullProduct.metadata || {},
                   };
                 } catch (error: any) {
-                  console.error(`Failed to fetch product ${productData}:`, error.message);
+                  console.error(
+                    `Failed to fetch product ${productData}:`,
+                    error.message,
+                  );
                 }
               } else if (productData.deleted !== true) {
                 product = {
@@ -60,22 +66,25 @@ export const getPlans = async (req: Request, res: Response) => {
               }
             }
           } catch (error: any) {
-            console.error(`Failed to fetch Stripe price for plan ${plan.id}:`, error.message);
+            console.error(
+              `Failed to fetch Stripe price for plan ${plan.id}:`,
+              error.message,
+            );
           }
         }
 
         return {
           ...plan,
-          price, 
+          price,
           limits: {
-            maxTopics: product?.metadata?.maxTopics 
-              ? parseInt(product.metadata.maxTopics, 10) 
+            maxTopics: product?.metadata?.maxTopics
+              ? parseInt(product.metadata.maxTopics, 10)
               : plan.maxTopics,
-            maxQuizzes: product?.metadata?.maxQuizzes 
-              ? parseInt(product.metadata.maxQuizzes, 10) 
+            maxQuizzes: product?.metadata?.maxQuizzes
+              ? parseInt(product.metadata.maxQuizzes, 10)
               : plan.maxQuizzes,
-            maxDocuments: product?.metadata?.maxDocuments 
-              ? parseInt(product.metadata.maxDocuments, 10) 
+            maxDocuments: product?.metadata?.maxDocuments
+              ? parseInt(product.metadata.maxDocuments, 10)
               : plan.maxDocuments,
             allowedModels: (() => {
               if (product?.metadata?.allowedModels) {
@@ -85,7 +94,9 @@ export const getPlans = async (req: Request, res: Response) => {
                   return Array.isArray(parsed) ? parsed : plan.allowedModels;
                 } catch {
                   // If not JSON, try splitting by comma
-                  const models = product.metadata.allowedModels.split(',').map((m: string) => m.trim());
+                  const models = product.metadata.allowedModels
+                    .split(",")
+                    .map((m: string) => m.trim());
                   return models.length > 0 ? models : plan.allowedModels;
                 }
               }
@@ -93,7 +104,7 @@ export const getPlans = async (req: Request, res: Response) => {
             })(),
           },
         };
-      })
+      }),
     );
 
     return res.json({ plans: plansWithPricing });
@@ -107,25 +118,23 @@ export const getPlans = async (req: Request, res: Response) => {
 function formatStripePrice(price: Stripe.Price): string {
   const amount = (price.unit_amount || 0) / 100;
   const currency = price.currency.toUpperCase();
-  const interval = price.recurring?.interval || 'one_time';
+  const interval = price.recurring?.interval || "one_time";
   const intervalCount = price.recurring?.interval_count || 1;
 
-  const formattedAmount = new Intl.NumberFormat('en-US', {
-    style: 'currency',
+  const formattedAmount = new Intl.NumberFormat("en-US", {
+    style: "currency",
     currency: price.currency,
   }).format(amount);
 
-  if (interval === 'one_time') {
+  if (interval === "one_time") {
     return formattedAmount;
   }
 
-  const intervalText = intervalCount === 1 
-    ? interval 
-    : `${intervalCount} ${interval}s`;
+  const intervalText =
+    intervalCount === 1 ? interval : `${intervalCount} ${interval}s`;
 
   return `${formattedAmount} per ${intervalText}`;
 }
-
 
 export const getMySubscription = async (
   req: AuthenticatedRequest,
@@ -164,7 +173,6 @@ export const getMySubscription = async (
   }
 };
 
-
 export const createCheckoutSession = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -199,10 +207,13 @@ export const createCheckoutSession = async (
     let customerId = subscription?.stripeCustomerId;
     const hasActiveStripeSubscription = subscription?.stripeSubscriptionId;
 
-    
-    if (hasActiveStripeSubscription && subscription?.stripeSubscriptionId && subscription?.stripeCustomerId) {
+    if (
+      hasActiveStripeSubscription &&
+      subscription?.stripeSubscriptionId &&
+      subscription?.stripeCustomerId
+    ) {
       const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-      
+
       try {
         const portalSession = await stripe.billingPortal.sessions.create({
           customer: subscription.stripeCustomerId,
@@ -263,7 +274,7 @@ export const createCheckoutSession = async (
           quantity: 1,
         },
       ],
-      mode: "subscription", 
+      mode: "subscription",
       success_url: `${frontendUrl}/subscription/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${frontendUrl}/subscription/cancel`,
       metadata: {
@@ -291,7 +302,6 @@ export const createCheckoutSession = async (
   }
 };
 
-
 export const handleWebhook = async (req: Request, res: Response) => {
   const sig = req.headers["stripe-signature"] as string;
 
@@ -303,7 +313,6 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
   try {
     event = verifyWebhookSignature(req.body, sig);
-  
   } catch (error: any) {
     console.error("Webhook signature verification failed:", error.message);
     return res.status(400).json({ error: `Webhook Error: ${error.message}` });
@@ -370,7 +379,6 @@ export const handleWebhook = async (req: Request, res: Response) => {
   }
 };
 
-
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const userId = session.metadata?.userId;
   const planId = session.metadata?.planId;
@@ -398,18 +406,22 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     session.subscription as string,
   );
 
-
   const periodStart = (subscription as any).current_period_start;
   const periodEnd = (subscription as any).current_period_end;
 
-  const currentPeriodStart = periodStart && typeof periodStart === "number"
-    ? new Date(periodStart * 1000)
-    : new Date();
-  const currentPeriodEnd = periodEnd && typeof periodEnd === "number"
-    ? new Date(periodEnd * 1000)
-    : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Default to 1 year from now
+  const currentPeriodStart =
+    periodStart && typeof periodStart === "number"
+      ? new Date(periodStart * 1000)
+      : new Date();
+  const currentPeriodEnd =
+    periodEnd && typeof periodEnd === "number"
+      ? new Date(periodEnd * 1000)
+      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // Default to 1 year from now
 
-  if (isNaN(currentPeriodStart.getTime()) || isNaN(currentPeriodEnd.getTime())) {
+  if (
+    isNaN(currentPeriodStart.getTime()) ||
+    isNaN(currentPeriodEnd.getTime())
+  ) {
     console.error("Invalid period dates from Stripe subscription:", {
       current_period_start: (subscription as any).current_period_start,
       current_period_end: (subscription as any).current_period_end,
@@ -450,7 +462,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 
   await updateSubscriptionFromPlan(userId, planId);
-  
+
   const finalSubscription = await prisma.userSubscription.findUnique({
     where: { userId },
     include: { plan: true },
@@ -465,33 +477,38 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 }
 
-
-
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
-  console.log("handleSubscriptionUpdated called with subscription (from webhook):", {
-    id: subscription.id,
-    status: subscription.status,
-    cancel_at_period_end: (subscription as any).cancel_at_period_end,
-  });
+  console.log(
+    "handleSubscriptionUpdated called with subscription (from webhook):",
+    {
+      id: subscription.id,
+      status: subscription.status,
+      cancel_at_period_end: (subscription as any).cancel_at_period_end,
+    },
+  );
 
-  
   let latestSubscription: Stripe.Subscription;
   try {
     latestSubscription = await stripe.subscriptions.retrieve(subscription.id, {
-      expand: ['items.data.price.product'],
+      expand: ["items.data.price.product"],
     });
     const cancelAt = (latestSubscription as any).cancel_at;
     const cancelAtPeriodEnd = (latestSubscription as any).cancel_at_period_end;
-    
+
     console.log("Retrieved latest subscription from Stripe:", {
       id: latestSubscription.id,
       status: latestSubscription.status,
       cancel_at_period_end: cancelAtPeriodEnd,
       cancel_at: cancelAt,
-      cancel_at_timestamp: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
+      cancel_at_timestamp: cancelAt
+        ? new Date(cancelAt * 1000).toISOString()
+        : null,
     });
   } catch (error: any) {
-    console.error("Failed to retrieve subscription from Stripe:", error.message);
+    console.error(
+      "Failed to retrieve subscription from Stripe:",
+      error.message,
+    );
     latestSubscription = subscription;
   }
 
@@ -525,25 +542,30 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   const periodStart = (latestSubscription as any).current_period_start;
   const periodEnd = (latestSubscription as any).current_period_end;
 
-  const currentPeriodStart = periodStart && typeof periodStart === "number"
-    ? new Date(periodStart * 1000)
-    : userSubscription.currentPeriodStart || new Date();
-  const currentPeriodEnd = periodEnd && typeof periodEnd === "number"
-    ? new Date(periodEnd * 1000)
-    : userSubscription.currentPeriodEnd || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+  const currentPeriodStart =
+    periodStart && typeof periodStart === "number"
+      ? new Date(periodStart * 1000)
+      : userSubscription.currentPeriodStart || new Date();
+  const currentPeriodEnd =
+    periodEnd && typeof periodEnd === "number"
+      ? new Date(periodEnd * 1000)
+      : userSubscription.currentPeriodEnd ||
+        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
- 
   const cancelAt = (latestSubscription as any).cancel_at;
-  const cancelAtPeriodEndFlag = (latestSubscription as any).cancel_at_period_end;
-  
- 
+  const cancelAtPeriodEndFlag = (latestSubscription as any)
+    .cancel_at_period_end;
+
   let cancelAtPeriodEnd: boolean;
-  
+
   if (cancelAt) {
     const cancelAtDate = new Date(cancelAt * 1000);
     const now = new Date();
     cancelAtPeriodEnd = cancelAtDate > now; // True if cancellation is scheduled for the future
-  } else if (cancelAtPeriodEndFlag !== undefined && cancelAtPeriodEndFlag !== null) {
+  } else if (
+    cancelAtPeriodEndFlag !== undefined &&
+    cancelAtPeriodEndFlag !== null
+  ) {
     cancelAtPeriodEnd = Boolean(cancelAtPeriodEndFlag);
   } else {
     cancelAtPeriodEnd = false;
@@ -557,9 +579,12 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     status: mapStripeStatus(latestSubscription.status),
     cancel_at_from_webhook: (subscription as any).cancel_at_period_end,
     cancel_at_from_stripe_api: (latestSubscription as any).cancel_at_period_end,
-    cancel_at_timestamp: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
+    cancel_at_timestamp: cancelAt
+      ? new Date(cancelAt * 1000).toISOString()
+      : null,
     cancel_at_flag: cancelAtPeriodEndFlag,
-    using_cancel_at_timestamp: cancelAtPeriodEndFlag === undefined && Boolean(cancelAt),
+    using_cancel_at_timestamp:
+      cancelAtPeriodEndFlag === undefined && Boolean(cancelAt),
   });
 
   const updateData: any = {
@@ -590,7 +615,6 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     status: updated.status,
   });
 }
-
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   const userSubscription = await prisma.userSubscription.findUnique({
@@ -625,7 +649,6 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
   }
 }
 
-
 async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   const subscriptionId = (invoice as any).subscription as string | null;
   if (!subscriptionId || typeof subscriptionId !== "string") return;
@@ -633,7 +656,6 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   await handleSubscriptionUpdated(subscription);
 }
-
 
 async function handlePaymentFailed(invoice: Stripe.Invoice) {
   const subscriptionId = (invoice as any).subscription as string | null;
@@ -650,7 +672,6 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
     });
   }
 }
-
 
 function mapStripeStatus(
   status: Stripe.Subscription.Status,
@@ -670,7 +691,6 @@ function mapStripeStatus(
       return "ACTIVE";
   }
 }
-
 
 export const cancelSubscription = async (
   req: AuthenticatedRequest,
@@ -705,7 +725,6 @@ export const cancelSubscription = async (
   }
 };
 
-
 export const resumeSubscription = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -737,17 +756,16 @@ export const resumeSubscription = async (
   }
 };
 
-
 /**
  * Create a Stripe Customer Portal session
- * 
+ *
  * The Customer Portal allows users to:
  * - View current subscription
  * - Switch between available plans
  * - Update payment method
  * - View invoices
  * - Cancel subscription
- * 
+ *
  * Note: Portal features must be configured in Stripe Dashboard:
  * Settings → Billing → Customer portal
  */
@@ -785,7 +803,7 @@ export const getCustomerPortal = async (
       // },
     });
 
-    return res.json({ 
+    return res.json({
       url: session.url,
       message: "Redirect user to this URL to manage their subscription",
     });
@@ -794,4 +812,3 @@ export const getCustomerPortal = async (
     return res.status(500).json({ error: "Failed to create portal session" });
   }
 };
-

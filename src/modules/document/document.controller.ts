@@ -3,8 +3,14 @@ import prisma from "../../utils/prisma";
 import { AuthenticatedRequest } from "../../middleware/limit-check.middleware";
 import { processDocument } from "../../utils/document-processor";
 import { generateEmbeddingsBatch } from "../../utils/embeddings";
-import { storeEmbeddings, deleteDocumentEmbeddings } from "../../utils/pgvector";
-import { incrementDocumentCount, decrementDocumentCount } from "../../utils/usage";
+import {
+  storeEmbeddings,
+  deleteDocumentEmbeddings,
+} from "../../utils/pgvector";
+import {
+  incrementDocumentCount,
+  decrementDocumentCount,
+} from "../../utils/usage";
 import {
   uploadFileToStorage,
   downloadFileFromStorage,
@@ -16,7 +22,6 @@ import os from "os";
 
 const TEMP_DIR = path.join(os.tmpdir(), "document-processing");
 fs.mkdir(TEMP_DIR, { recursive: true }).catch(console.error);
-
 
 export const uploadDocument = async (
   req: AuthenticatedRequest,
@@ -73,7 +78,7 @@ export const uploadDocument = async (
       data: {
         userId: req.user.id,
         filename: file.originalname,
-        filePath: storagePath, 
+        filePath: storagePath,
         fileSize: file.size,
         mimeType: file.mimetype,
         status: "UPLOADING",
@@ -155,7 +160,9 @@ async function processDocumentAsync(
         metadata: chunk.metadata,
       }))
       .filter(
-        (item): item is {
+        (
+          item,
+        ): item is {
           index: number;
           text: string;
           embedding: number[];
@@ -230,10 +237,7 @@ export const listDocuments = async (
  * Get document details
  * GET /api/v1/documents/:id
  */
-export const getDocument = async (
-  req: AuthenticatedRequest,
-  res: Response,
-) => {
+export const getDocument = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -331,4 +335,3 @@ export const deleteDocument = async (
     return res.status(500).json({ error: "Failed to delete document" });
   }
 };
-

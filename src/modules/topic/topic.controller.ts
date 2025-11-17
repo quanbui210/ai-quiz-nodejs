@@ -114,7 +114,6 @@ export const updateTopic = async (
       where: { id },
       data: {
         ...(name !== undefined && { name: name.trim() }),
-      
       },
     });
 
@@ -170,12 +169,14 @@ export const deleteTopic = async (
         .json({ error: "You don't have permission to delete this topic" });
     }
 
-    const quizIds = topic.quizzes.map((q) => q.id);
-    const questionIds = topic.quizzes.flatMap((q) =>
-      q.questions.map((q) => q.id),
+    const quizIds = topic.quizzes.map((q: { id: string }) => q.id);
+    const questionIds = topic.quizzes.flatMap(
+      (q: { questions: Array<{ id: string }> }) =>
+        q.questions.map((q: { id: string }) => q.id),
     );
-    const attemptIds = topic.quizzes.flatMap((q) =>
-      q.attempts.map((a) => a.id),
+    const attemptIds = topic.quizzes.flatMap(
+      (q: { attempts: Array<{ id: string }> }) =>
+        q.attempts.map((a: { id: string }) => a.id),
     );
 
     const operations: any[] = [];

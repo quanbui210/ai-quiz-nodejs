@@ -7,7 +7,10 @@ import {
   getDocument,
   deleteDocument,
 } from "./document.controller";
-import { generateQuizFromDocument, getDocumentQuizzes } from "./document-quiz.controller";
+import {
+  generateQuizFromDocument,
+  getDocumentQuizzes,
+} from "./document-quiz.controller";
 import { getDocumentChatSessions } from "./document-chat.controller";
 import { authenticate } from "../../middleware/auth.middleware";
 import { checkDocumentLimit } from "../../middleware/limit-check.middleware";
@@ -27,7 +30,11 @@ const storage = multer.diskStorage({
   },
 });
 
-const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+const fileFilter = (
+  req: any,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback,
+) => {
   const allowedMimes = [
     "application/pdf",
     "application/msword",
@@ -39,7 +46,11 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error("Invalid file type. Only PDF, Word, and text files are allowed."));
+    cb(
+      new Error(
+        "Invalid file type. Only PDF, Word, and text files are allowed.",
+      ),
+    );
   }
 };
 
@@ -69,4 +80,3 @@ router.get("/:id", authenticate, getDocument);
 router.delete("/:id", authenticate, deleteDocument);
 
 export default router;
-

@@ -53,7 +53,8 @@ export const getDocumentChatSessions = async (
     });
   } catch (error: any) {
     console.error("Get document chat sessions error:", error);
-    return res.status(500).json({ error: "Failed to fetch document chat sessions" });
+    return res
+      .status(500)
+      .json({ error: "Failed to fetch document chat sessions" });
   }
 };
-
