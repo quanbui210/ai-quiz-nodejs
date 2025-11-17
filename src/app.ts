@@ -9,6 +9,8 @@ import quizRoutes from "./modules/quiz/quiz.route";
 import resultsRoutes from "./modules/results/results.route";
 import subscriptionRoutes from "./modules/subscription/subscription.routes";
 import adminRoutes from "./modules/admin/admin.routes";
+import documentRoutes from "./modules/document/document.routes";
+import chatRoutes from "./modules/chat/chat.routes";
 import { handleWebhook } from "./modules/subscription/subscription.controller";
 dotenv.config();
 
@@ -74,6 +76,8 @@ app.get("/", (req, res) => {
       results: "/api/v1/results",
       subscription: "/api/v1/subscription",
       admin: "/api/v1/admin",
+      documents: "/api/v1/documents",
+      chat: "/api/v1/chat",
     },
     swagger: "/api-docs",
   });
@@ -85,6 +89,8 @@ app.use("/api/v1/quiz", quizRoutes);
 app.use("/api/v1/results", resultsRoutes);
 app.use("/api/v1/subscription", subscriptionRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/documents", documentRoutes);
+app.use("/api/v1/chat", chatRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

@@ -17,12 +17,114 @@ export const getPlans = async (req: Request, res: Response) => {
       orderBy: [{ isDefault: "desc" }, { createdAt: "asc" }],
     });
 
-    return res.json({ plans });
+    const plansWithPricing = await Promise.all(
+      plans.map(async (plan) => {
+        let price = null;
+        let product = null;
+
+        if (plan.stripePriceId) {
+          try {
+            // Retrieve price from Stripe
+            const stripePrice = await stripe.prices.retrieve(plan.stripePriceId, {
+              expand: ['product'],
+            });
+
+            price = {
+              id: stripePrice.id,
+              amount: stripePrice.unit_amount, // Amount in cents
+              currency: stripePrice.currency,
+              interval: stripePrice.recurring?.interval, // 'month' or 'year'
+              intervalCount: stripePrice.recurring?.interval_count || 1,
+              formatted: formatStripePrice(stripePrice),
+            };
+
+            const productData = stripePrice.product;
+            if (productData) {
+              if (typeof productData === 'string') {
+                try {
+                  const fullProduct = await stripe.products.retrieve(productData);
+                  product = {
+                    id: fullProduct.id,
+                    name: fullProduct.name,
+                    metadata: fullProduct.metadata || {},
+                  };
+                } catch (error: any) {
+                  console.error(`Failed to fetch product ${productData}:`, error.message);
+                }
+              } else if (productData.deleted !== true) {
+                product = {
+                  id: productData.id,
+                  name: productData.name || undefined,
+                  metadata: productData.metadata || {},
+                };
+              }
+            }
+          } catch (error: any) {
+            console.error(`Failed to fetch Stripe price for plan ${plan.id}:`, error.message);
+          }
+        }
+
+        return {
+          ...plan,
+          price, 
+          limits: {
+            maxTopics: product?.metadata?.maxTopics 
+              ? parseInt(product.metadata.maxTopics, 10) 
+              : plan.maxTopics,
+            maxQuizzes: product?.metadata?.maxQuizzes 
+              ? parseInt(product.metadata.maxQuizzes, 10) 
+              : plan.maxQuizzes,
+            maxDocuments: product?.metadata?.maxDocuments 
+              ? parseInt(product.metadata.maxDocuments, 10) 
+              : plan.maxDocuments,
+            allowedModels: (() => {
+              if (product?.metadata?.allowedModels) {
+                try {
+                  // Try parsing as JSON string first
+                  const parsed = JSON.parse(product.metadata.allowedModels);
+                  return Array.isArray(parsed) ? parsed : plan.allowedModels;
+                } catch {
+                  // If not JSON, try splitting by comma
+                  const models = product.metadata.allowedModels.split(',').map((m: string) => m.trim());
+                  return models.length > 0 ? models : plan.allowedModels;
+                }
+              }
+              return plan.allowedModels;
+            })(),
+          },
+        };
+      })
+    );
+
+    return res.json({ plans: plansWithPricing });
   } catch (error: any) {
     console.error("Get plans error:", error);
     return res.status(500).json({ error: "Failed to fetch plans" });
   }
 };
+
+// Helper function to format Stripe price
+function formatStripePrice(price: Stripe.Price): string {
+  const amount = (price.unit_amount || 0) / 100;
+  const currency = price.currency.toUpperCase();
+  const interval = price.recurring?.interval || 'one_time';
+  const intervalCount = price.recurring?.interval_count || 1;
+
+  const formattedAmount = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: price.currency,
+  }).format(amount);
+
+  if (interval === 'one_time') {
+    return formattedAmount;
+  }
+
+  const intervalText = intervalCount === 1 
+    ? interval 
+    : `${intervalCount} ${interval}s`;
+
+  return `${formattedAmount} per ${intervalText}`;
+}
 
 
 export const getMySubscription = async (
@@ -97,47 +199,25 @@ export const createCheckoutSession = async (
     let customerId = subscription?.stripeCustomerId;
     const hasActiveStripeSubscription = subscription?.stripeSubscriptionId;
 
-    if (hasActiveStripeSubscription && subscription?.stripeSubscriptionId) {
+    
+    if (hasActiveStripeSubscription && subscription?.stripeSubscriptionId && subscription?.stripeCustomerId) {
+      const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+      
       try {
-        const stripeSubscription = await stripe.subscriptions.retrieve(
-          subscription.stripeSubscriptionId,
-        );
-
-        const subscriptionItemId = (stripeSubscription as any).items?.data?.[0]?.id;
-
-        if (!subscriptionItemId) {
-          return res.status(400).json({
-            error: "Unable to update subscription",
-            message: "Subscription item not found",
-          });
-        }
-
-        await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-          items: [
-            {
-              id: subscriptionItemId,
-              price: plan.stripePriceId,
-            },
-          ],
-          metadata: {
-            userId: req.user.id,
-            planId: plan.id,
-          },
-          proration_behavior: "always_invoice",
+        const portalSession = await stripe.billingPortal.sessions.create({
+          customer: subscription.stripeCustomerId,
+          return_url: `${frontendUrl}/subscription`,
         });
-
-        await updateSubscriptionFromPlan(req.user.id, planId);
 
         return res.json({
-          message: "Subscription updated successfully",
-          updated: true,
-          planId: plan.id,
-          planName: plan.name,
+          message: "Please use the Customer Portal to manage your subscription",
+          portalUrl: portalSession.url,
+          usePortal: true,
         });
       } catch (error: any) {
-        console.error("Error updating subscription:", error);
+        console.error("Error creating portal session:", error);
         return res.status(500).json({
-          error: "Failed to update subscription",
+          error: "Failed to create portal session",
           message: error.message,
         });
       }
@@ -251,7 +331,13 @@ export const handleWebhook = async (req: Request, res: Response) => {
 
       case "customer.subscription.updated": {
         const subscription = event.data.object as Stripe.Subscription;
+        console.log("Received customer.subscription.updated webhook:", {
+          subscriptionId: subscription.id,
+          status: subscription.status,
+          cancel_at_period_end: (subscription as any).cancel_at_period_end,
+        });
         await handleSubscriptionUpdated(subscription);
+        console.log("Completed processing customer.subscription.updated");
         break;
       }
 
@@ -382,6 +468,33 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
 
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
+  console.log("handleSubscriptionUpdated called with subscription (from webhook):", {
+    id: subscription.id,
+    status: subscription.status,
+    cancel_at_period_end: (subscription as any).cancel_at_period_end,
+  });
+
+  
+  let latestSubscription: Stripe.Subscription;
+  try {
+    latestSubscription = await stripe.subscriptions.retrieve(subscription.id, {
+      expand: ['items.data.price.product'],
+    });
+    const cancelAt = (latestSubscription as any).cancel_at;
+    const cancelAtPeriodEnd = (latestSubscription as any).cancel_at_period_end;
+    
+    console.log("Retrieved latest subscription from Stripe:", {
+      id: latestSubscription.id,
+      status: latestSubscription.status,
+      cancel_at_period_end: cancelAtPeriodEnd,
+      cancel_at: cancelAt,
+      cancel_at_timestamp: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
+    });
+  } catch (error: any) {
+    console.error("Failed to retrieve subscription from Stripe:", error.message);
+    latestSubscription = subscription;
+  }
+
   const userSubscription = await prisma.userSubscription.findUnique({
     where: { stripeSubscriptionId: subscription.id },
   });
@@ -391,8 +504,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     return;
   }
 
-
-  const subscriptionItems = (subscription as any).items?.data || [];
+  const subscriptionItems = (latestSubscription as any).items?.data || [];
   const currentPriceId = subscriptionItems[0]?.price?.id;
 
   let newPlanId = userSubscription.planId;
@@ -410,8 +522,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     }
   }
 
-  const periodStart = (subscription as any).current_period_start;
-  const periodEnd = (subscription as any).current_period_end;
+  const periodStart = (latestSubscription as any).current_period_start;
+  const periodEnd = (latestSubscription as any).current_period_end;
 
   const currentPeriodStart = periodStart && typeof periodStart === "number"
     ? new Date(periodStart * 1000)
@@ -420,9 +532,39 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     ? new Date(periodEnd * 1000)
     : userSubscription.currentPeriodEnd || new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
 
+ 
+  const cancelAt = (latestSubscription as any).cancel_at;
+  const cancelAtPeriodEndFlag = (latestSubscription as any).cancel_at_period_end;
+  
+ 
+  let cancelAtPeriodEnd: boolean;
+  
+  if (cancelAt) {
+    const cancelAtDate = new Date(cancelAt * 1000);
+    const now = new Date();
+    cancelAtPeriodEnd = cancelAtDate > now; // True if cancellation is scheduled for the future
+  } else if (cancelAtPeriodEndFlag !== undefined && cancelAtPeriodEndFlag !== null) {
+    cancelAtPeriodEnd = Boolean(cancelAtPeriodEndFlag);
+  } else {
+    cancelAtPeriodEnd = false;
+  }
+
+  console.log("Updating subscription with:", {
+    userId: userSubscription.userId,
+    subscriptionId: latestSubscription.id,
+    cancelAtPeriodEnd,
+    previousCancelAtPeriodEnd: userSubscription.cancelAtPeriodEnd,
+    status: mapStripeStatus(latestSubscription.status),
+    cancel_at_from_webhook: (subscription as any).cancel_at_period_end,
+    cancel_at_from_stripe_api: (latestSubscription as any).cancel_at_period_end,
+    cancel_at_timestamp: cancelAt ? new Date(cancelAt * 1000).toISOString() : null,
+    cancel_at_flag: cancelAtPeriodEndFlag,
+    using_cancel_at_timestamp: cancelAtPeriodEndFlag === undefined && Boolean(cancelAt),
+  });
+
   const updateData: any = {
-    status: mapStripeStatus(subscription.status),
-    cancelAtPeriodEnd: (subscription as any).cancel_at_period_end,
+    status: mapStripeStatus(latestSubscription.status),
+    cancelAtPeriodEnd,
   };
 
   if (!isNaN(currentPeriodStart.getTime())) {
@@ -437,9 +579,15 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     await updateSubscriptionFromPlan(userSubscription.userId, newPlanId);
   }
 
-  await prisma.userSubscription.update({
+  const updated = await prisma.userSubscription.update({
     where: { id: userSubscription.id },
     data: updateData,
+  });
+
+  console.log("Subscription updated successfully:", {
+    userId: updated.userId,
+    cancelAtPeriodEnd: updated.cancelAtPeriodEnd,
+    status: updated.status,
   });
 }
 
@@ -590,6 +738,19 @@ export const resumeSubscription = async (
 };
 
 
+/**
+ * Create a Stripe Customer Portal session
+ * 
+ * The Customer Portal allows users to:
+ * - View current subscription
+ * - Switch between available plans
+ * - Update payment method
+ * - View invoices
+ * - Cancel subscription
+ * 
+ * Note: Portal features must be configured in Stripe Dashboard:
+ * Settings → Billing → Customer portal
+ */
 export const getCustomerPortal = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -610,12 +771,24 @@ export const getCustomerPortal = async (
 
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
 
+    // Create portal session
+    // Stripe will show all products/prices configured in the portal settings
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripeCustomerId,
       return_url: `${frontendUrl}/subscription`,
+      // Additional configuration can be added here if needed:
+      // flow_data: {
+      //   type: 'subscription_update',
+      //   subscription_update: {
+      //     subscription: subscription.stripeSubscriptionId,
+      //   },
+      // },
     });
 
-    return res.json({ url: session.url });
+    return res.json({ 
+      url: session.url,
+      message: "Redirect user to this URL to manage their subscription",
+    });
   } catch (error: any) {
     console.error("Get customer portal error:", error);
     return res.status(500).json({ error: "Failed to create portal session" });

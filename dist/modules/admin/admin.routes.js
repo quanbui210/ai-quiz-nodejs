@@ -1,0 +1,22 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const admin_controller_1 = require("./admin.controller");
+const auth_middleware_1 = require("../../middleware/auth.middleware");
+const admin_middleware_1 = require("../../middleware/admin.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.use(admin_middleware_1.requireAdmin);
+router.get("/dashboard", admin_controller_1.getDashboard);
+router.get("/users", admin_controller_1.listUsers);
+router.get("/users/:userId", admin_controller_1.getUser);
+router.put("/users/:userId/limits", admin_controller_1.updateUserLimits);
+router.put("/users/:userId/subscription", admin_controller_1.changeUserSubscription);
+router.post("/users/:userId/make-admin", admin_middleware_1.requireSuperAdmin, admin_controller_1.makeAdmin);
+router.delete("/users/:userId/revoke-admin", admin_middleware_1.requireSuperAdmin, admin_controller_1.revokeAdmin);
+router.get("/plans", admin_controller_1.listPlans);
+router.post("/plans", admin_middleware_1.requireSuperAdmin, admin_controller_1.createPlan);
+router.put("/plans/:planId", admin_middleware_1.requireSuperAdmin, admin_controller_1.updatePlan);
+router.delete("/plans/:planId", admin_middleware_1.requireSuperAdmin, admin_controller_1.deletePlan);
+exports.default = router;
+//# sourceMappingURL=admin.routes.js.map

@@ -1,0 +1,41 @@
+-- Storage Bucket Setup Instructions
+-- 
+-- IMPORTANT: You cannot create storage policies via SQL in Supabase.
+-- Storage policies must be created through the Supabase Dashboard UI.
+--
+-- Follow these steps instead:
+--
+-- 1. CREATE BUCKET (Dashboard):
+--    - Go to Supabase Dashboard → Storage
+--    - Click "New bucket"
+--    - Name: "documents"
+--    - Public: Unchecked (private)
+--    - File size limit: 10MB
+--    - Click "Create bucket"
+--
+-- 2. CREATE POLICIES (Dashboard):
+--    - Go to Storage → Policies → Select "documents" bucket
+--    - Click "New Policy" for each:
+--
+--    Policy 1: Service role can upload
+--    - Name: "Service role can upload"
+--    - Operation: INSERT
+--    - Policy definition: true
+--
+--    Policy 2: Service role can read
+--    - Name: "Service role can read"
+--    - Operation: SELECT
+--    - Policy definition: true
+--
+--    Policy 3: Service role can delete
+--    - Name: "Service role can delete"
+--    - Operation: DELETE
+--    - Policy definition: true
+--
+-- 3. VERIFY (SQL - This part works):
+SELECT * FROM storage.buckets WHERE name = 'documents';
+
+-- Note: The service_role key bypasses RLS, so if you're using
+-- SUPABASE_SERVICE_ROLE_KEY in your backend, you might not need
+-- explicit policies. However, it's good practice to set them up.
+

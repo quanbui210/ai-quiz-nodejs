@@ -23,6 +23,7 @@ model User {
   subscription   UserSubscription?
   usage          UserUsage?
   documents      Document[]
+  chatSessions   ChatSession[]
   adminProfile   AdminUser?
 }
 
@@ -50,14 +51,18 @@ model Quiz {
   timer       Int?       // in seconds
   status      QuizStatus @default(PENDING)
   count       Int
-  topic       Topic      @relation(fields: [topicId], references: [id])
-  topicId     String
+  topic       Topic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  topicId     String?
+  document    Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentId  String?
 
   user        User       @relation(fields: [userId], references: [id])
   userId      String
 
   questions   Question[]
   attempts    QuizAttempt[]
+  
+  @@index([documentId])
 }
 
 model Question {
@@ -266,14 +271,69 @@ model Document {
   mimeType      String
   status        DocumentStatus @default(UPLOADING)
   vectorized    Boolean  @default(false)
+  chunkCount    Int      @default(0)
   
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  embeddings    DocumentEmbedding[]
+  chatSessions  ChatSession[]
+  quizzes       Quiz[]
   
   @@index([userId])
   @@index([status])
+  @@index([vectorized])
+}
+
+model DocumentEmbedding {
+  id            String   @id @default(uuid())
+  documentId    String
+  chunkIndex    Int
+  chunkText     String   @db.Text
+  embedding     Unsupported("vector(1536)") // OpenAI embedding dimension
+  metadata      Json?    // Store additional metadata like page number, section, etc.
+  
+  createdAt     DateTime @default(now())
+  
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  
+  @@index([documentId])
+  @@index([chunkIndex])
+}
+
+model ChatSession {
+  id            String   @id @default(uuid())
+  userId       String
+  documentId   String?
+  title        String?  // Auto-generated or user-provided
+  model        String   @default("gpt-4-turbo") // AI model used
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document     Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  messages     ChatMessage[]
+  
+  @@index([userId])
+  @@index([documentId])
+}
+
+model ChatMessage {
+  id            String   @id @default(uuid())
+  sessionId     String
+  role          ChatRole
+  content       String   @db.Text
+  contextChunks Json?    // Store relevant document chunks used for RAG
+  tokenCount    Int?     // Track token usage
+  
+  createdAt     DateTime @default(now())
+  
+  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  
+  @@index([sessionId])
+  @@index([createdAt])
 }
 
 enum SubscriptionStatus {
@@ -295,4 +355,10 @@ enum DocumentStatus {
   PROCESSING
   READY
   FAILED
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
 }

@@ -11,7 +11,6 @@ export const getDashboard = async (
   res: Response,
 ) => {
   try {
-    // Basic counts
     const [
       totalUsers,
       totalSubscriptions,
@@ -120,6 +119,62 @@ export const getDashboard = async (
 
     const paidSubscriptions = activeSubscriptions - freeSubscriptions;
 
+    const detailedSubscriptions = await prisma.userSubscription.findMany({
+      where: {
+        status: "ACTIVE",
+      },
+      include: {
+        plan: {
+          select: {
+            id: true,
+            name: true,
+            stripePriceId: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            createdAt: true,
+          },
+        },
+      },
+      orderBy: {
+        currentPeriodStart: "desc",
+      },
+    });
+
+    const subscriptions = detailedSubscriptions.map((sub) => ({
+      id: sub.id,
+      userId: sub.userId,
+      user: {
+        id: sub.user.id,
+        email: sub.user.email,
+        name: sub.user.name,
+        joinedAt: sub.user.createdAt,
+      },
+      plan: {
+        id: sub.plan.id,
+        name: sub.plan.name,
+        stripePriceId: sub.plan.stripePriceId,
+      },
+      status: sub.status,
+      currentPeriodStart: sub.currentPeriodStart,
+      currentPeriodEnd: sub.currentPeriodEnd,
+      cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
+      stripeCustomerId: sub.stripeCustomerId,
+      stripeSubscriptionId: sub.stripeSubscriptionId,
+      limits: {
+        maxTopics: sub.maxTopics,
+        maxQuizzes: sub.maxQuizzes,
+        maxDocuments: sub.maxDocuments,
+        allowedModels: sub.allowedModels,
+      },
+      createdAt: sub.createdAt,
+      updatedAt: sub.updatedAt,
+    }));
+
     return res.json({
       stats: {
         totalUsers,
@@ -143,6 +198,7 @@ export const getDashboard = async (
         
         totalPlans: plans,
         subscriptionBreakdown,
+        subscriptions, 
       },
     });
   } catch (error: any) {

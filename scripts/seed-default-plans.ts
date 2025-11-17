@@ -36,6 +36,7 @@ async function main() {
       maxTopics: 50,
       maxQuizzes: 200,
       maxDocuments: 20,
+      
       allowedModels: ["gpt-3.5-turbo", "gpt-4-turbo"],
     },
   });

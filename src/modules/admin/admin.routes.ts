@@ -20,7 +20,6 @@ const router = Router();
 router.use(authenticate);
 router.use(requireAdmin);
 
-// Dashboard
 router.get("/dashboard", getDashboard);
 
 // User management
@@ -31,7 +30,6 @@ router.put("/users/:userId/subscription", changeUserSubscription);
 router.post("/users/:userId/make-admin", requireSuperAdmin, makeAdmin);
 router.delete("/users/:userId/revoke-admin", requireSuperAdmin, revokeAdmin);
 
-// Plan management
 router.get("/plans", listPlans);
 router.post("/plans", requireSuperAdmin, createPlan);
 router.put("/plans/:planId", requireSuperAdmin, updatePlan);
