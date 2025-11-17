@@ -8,6 +8,10 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
     const redirectUrl = (redirectTo as string) || `${frontendUrl}/auth/callback`;
 
+    console.log("[Google OAuth] FRONTEND_URL from env:", process.env.FRONTEND_URL);
+    console.log("[Google OAuth] redirectTo from query:", redirectTo);
+    console.log("[Google OAuth] Final redirectUrl being sent to Supabase:", redirectUrl);
+
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -19,6 +23,13 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
         },
       },
     });
+
+    if (data?.url) {
+      console.log("[Google OAuth] OAuth URL generated:", data.url);
+      const urlObj = new URL(data.url);
+      const redirectUri = urlObj.searchParams.get("redirect_uri");
+      console.log("[Google OAuth] redirect_uri in OAuth URL:", redirectUri);
+    }
 
     if (error || !data?.url) {
       return res.status(400).json({
@@ -180,23 +191,17 @@ export const handleCallback = async (req: Request, res: Response) => {
           console.error("Failed to check admin status:", adminError);
         }
 
-        const response: any = {
-          message: "Authentication successful",
-          user: data.user,
-          session: data.session,
-        };
+        // Get frontend URL for redirect
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const token = data.session.access_token;
 
-        if (adminProfile) {
-          response.isAdmin = true;
-          response.admin = {
-            role: adminProfile.role,
-            permissions: adminProfile.permissions,
-          };
-        } else {
-          response.isAdmin = false;
-        }
-
-        return res.json(response);
+        // Redirect to frontend with token in URL hash (for frontend to extract)
+        // Frontend should handle extracting token and storing it
+        const redirectUrl = `${frontendUrl}?token=${encodeURIComponent(token)}&refresh_token=${encodeURIComponent(data.session.refresh_token || "")}`;
+        
+        console.log("[OAuth Callback] Redirecting to frontend:", redirectUrl);
+        
+        return res.redirect(redirectUrl);
       } catch (dbError: any) {
         console.error("Database error during OAuth callback:", dbError);
 

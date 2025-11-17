@@ -42,8 +42,8 @@ const prisma_1 = __importDefault(require("../../utils/prisma"));
 const loginWithGoogle = async (req, res) => {
     try {
         const { redirectTo } = req.query;
-        const backendUrl = process.env.BACKEND_URL || "http://localhost:3000";
-        const redirectUrl = redirectTo || `${backendUrl}/callback.html`;
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+        const redirectUrl = redirectTo || `${frontendUrl}/auth/callback`;
         const { data, error } = await supabase_1.supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
