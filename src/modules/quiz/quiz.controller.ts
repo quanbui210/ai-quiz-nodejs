@@ -689,7 +689,7 @@ export const createQuiz = async (
           create: parsedQuiz.questions.map((q) => ({
             text: q.text,
             type: q.type,
-            options: q.options as Prisma.InputJsonValue,
+            options: q.options as any,
             correct: q.correct,
             explanation: q.explanation
               ? {
@@ -700,7 +700,7 @@ export const createQuiz = async (
               : undefined,
           })),
         },
-      } as Prisma.QuizUncheckedCreateInput,
+      } as any,
       include: {
         questions: {
           select: {
@@ -822,7 +822,7 @@ export const submitAnswers = async (
 
     const results = answers.map(
       (answer: { questionId: string; userAnswer: string }) => {
-        const question = quiz.questions.find((q) => q.id === answer.questionId);
+        const question = quiz.questions.find((q: { id: string }) => q.id === answer.questionId);
         if (!question) {
           return {
             questionId: answer.questionId,
@@ -1241,7 +1241,7 @@ export const resumeQuiz = async (
           id: string;
           text: string;
           type: QuestionType;
-          options: Prisma.JsonValue;
+          options: any;
         }) => ({
           id: q.id,
           text: q.text,

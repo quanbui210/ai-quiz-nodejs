@@ -148,7 +148,7 @@ export const getDashboard = async (
       },
     });
 
-    const subscriptions = detailedSubscriptions.map((sub) => ({
+    const subscriptions = detailedSubscriptions.map((sub: any) => ({
       id: sub.id,
       userId: sub.userId,
       user: {

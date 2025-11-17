@@ -70,7 +70,7 @@ export const createChatSession = async (
 
         if (firstChunks.length > 0) {
           const sampleText = firstChunks
-            .map((chunk) => chunk.chunkText.substring(0, 200))
+            .map((chunk: { chunkText: string }) => chunk.chunkText.substring(0, 200))
             .join(" ");
 
           const titleCompletion = await openai.chat.completions.create({
@@ -250,7 +250,7 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
               metadata: true,
             },
           });
-          similarChunks = allChunks.map((chunk) => ({
+          similarChunks = allChunks.map((chunk: { id: string; chunkIndex: number; chunkText: string; metadata: any }) => ({
             ...chunk,
             similarity: 0.5, // Default similarity for fallback chunks
           }));
@@ -276,7 +276,7 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     // Build conversation history
-    const conversationHistory = session.messages.map((msg) => ({
+    const conversationHistory = session.messages.map((msg: { role: string; content: string }) => ({
       role: msg.role.toLowerCase(),
       content: msg.content,
     }));
@@ -303,7 +303,7 @@ Instructions:
     // Prepare messages for OpenAI
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
-      ...conversationHistory.map((msg) => ({
+      ...conversationHistory.map((msg: { role: string; content: string }) => ({
         role: msg.role.toLowerCase() as "user" | "assistant" | "system",
         content: msg.content,
       })),

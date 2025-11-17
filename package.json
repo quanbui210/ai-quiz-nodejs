@@ -4,7 +4,8 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/app.ts",
-    "build": "tsc",
+    "build": "npm run prisma:generate && tsc",
+    "build:skip-prisma": "tsc",
     "start": "nodemon --exec ts-node src/app.ts",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -208,7 +208,7 @@ export const generateQuizFromDocument = async (
         });
 
         if (allChunks.length > 0) {
-          chunks = allChunks.map((chunk) => ({
+          chunks = allChunks.map((chunk: { id: string; chunkIndex: number; chunkText: string; metadata: any }) => ({
             id: chunk.id,
             chunkIndex: chunk.chunkIndex,
             chunkText: chunk.chunkText,

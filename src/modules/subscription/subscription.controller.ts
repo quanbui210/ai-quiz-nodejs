@@ -17,7 +17,7 @@ export const getPlans = async (req: Request, res: Response) => {
     });
 
     const plansWithPricing = await Promise.all(
-      plans.map(async (plan) => {
+      plans.map(async (plan: { id: string; name: string; stripePriceId: string | null; stripeProductId: string | null; [key: string]: any }) => {
         let price = null;
         let product = null;
 
