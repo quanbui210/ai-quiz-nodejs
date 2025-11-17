@@ -12,6 +12,8 @@ import adminRoutes from "./modules/admin/admin.routes";
 import documentRoutes from "./modules/document/document.routes";
 import chatRoutes from "./modules/chat/chat.routes";
 import { handleWebhook } from "./modules/subscription/subscription.controller";
+
+
 dotenv.config();
 
 const app = express();
