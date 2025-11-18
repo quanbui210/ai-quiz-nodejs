@@ -23,6 +23,7 @@
     "seed:plans": "ts-node scripts/seed-default-plans.ts",
     "seed:admin": "ts-node scripts/seed-admin-user.ts",
     "sync:usage": "ts-node scripts/sync-user-usage.ts",
+    "setup:production": "ts-node scripts/setup-production-db.ts",
     "stripe:listen": "stripe listen --forward-to localhost:3001/webhook"
   },
   "author": "",
