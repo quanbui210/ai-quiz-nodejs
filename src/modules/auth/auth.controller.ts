@@ -16,7 +16,7 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
       provider: "google",
       options: {
         redirectTo: redirectUrl,
-        skipBrowserRedirect: false,
+        skipBrowserRedirect: true,
         queryParams: {
           access_type: "offline",
           prompt: "consent",
