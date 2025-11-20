@@ -1,7 +1,10 @@
 import fs from "fs/promises";
+import fsSync from "fs";
 import path from "path";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
+import unzipper from "unzipper";
+import { XMLParser } from "fast-xml-parser";
 
 export interface DocumentChunk {
   text: string;
@@ -27,26 +30,33 @@ export async function extractTextFromFile(
   mimeType: string,
 ): Promise<string> {
   try {
-    const fileBuffer = await fs.readFile(filePath);
-
     switch (mimeType) {
-      case "application/pdf":
-        return await extractTextFromPDF(fileBuffer);
+      case "application/pdf": {
+        const pdfBuffer = await fs.readFile(filePath);
+        return await extractTextFromPDF(pdfBuffer);
+      }
 
       case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-      case "application/msword":
-        return await extractTextFromWord(fileBuffer);
+      case "application/msword": {
+        const wordBuffer = await fs.readFile(filePath);
+        return await extractTextFromWord(wordBuffer);
+      }
+
+      case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+      case "application/vnd.ms-powerpoint":
+        return await extractTextFromPowerPoint(filePath);
 
       case "text/plain":
-        return fileBuffer.toString("utf-8");
-
-      case "text/markdown":
-        return fileBuffer.toString("utf-8");
+      case "text/markdown": {
+        const textBuffer = await fs.readFile(filePath);
+        return textBuffer.toString("utf-8");
+      }
 
       default:
         // Try to read as text for other text-based formats
         try {
-          return fileBuffer.toString("utf-8");
+          const defaultBuffer = await fs.readFile(filePath);
+          return defaultBuffer.toString("utf-8");
         } catch {
           throw new Error(`Unsupported file type: ${mimeType}`);
         }
@@ -74,6 +84,139 @@ async function extractTextFromWord(buffer: Buffer): Promise<string> {
     return result.value;
   } catch (error: any) {
     throw new Error(`Failed to parse Word document: ${error.message}`);
+  }
+}
+
+/**
+ * Extract text from PowerPoint file (.pptx or .ppt)
+ * .pptx files are ZIP archives containing XML files
+ */
+async function extractTextFromPowerPoint(filePath: string): Promise<string> {
+  try {
+    const ext = path.extname(filePath).toLowerCase();
+    
+    // For .pptx (OpenXML format - ZIP archive)
+    if (ext === ".pptx") {
+      return await extractTextFromPPTX(filePath);
+    }
+    
+    // For .ppt (legacy format - binary, harder to parse)
+    // Note: .ppt files are binary and require special libraries
+    // For now, we'll throw an error suggesting conversion to .pptx
+    if (ext === ".ppt") {
+      throw new Error(
+        "Legacy .ppt format is not supported. Please convert to .pptx format or use a newer PowerPoint file."
+      );
+    }
+    
+    throw new Error(`Unsupported PowerPoint format: ${ext}`);
+  } catch (error: any) {
+    throw new Error(`Failed to parse PowerPoint: ${error.message}`);
+  }
+}
+
+/**
+ * Extract text from .pptx file (OpenXML format)
+ * .pptx files are ZIP archives with XML files inside
+ */
+async function extractTextFromPPTX(filePath: string): Promise<string> {
+  const tempDir = path.join(path.dirname(filePath), `temp-${Date.now()}`);
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    textNodeName: "_text",
+    attributeNamePrefix: "@_",
+  });
+
+  try {
+    await fs.mkdir(tempDir, { recursive: true });
+
+    await new Promise<void>((resolve, reject) => {
+      fsSync.createReadStream(filePath)
+        .pipe(unzipper.Extract({ path: tempDir }))
+        .on("close", resolve)
+        .on("error", reject);
+    });
+
+    const slidesDir = path.join(tempDir, "ppt", "slides");
+    let allText: string[] = [];
+
+    try {
+      const slideFiles = await fs.readdir(slidesDir);
+      const xmlFiles = slideFiles
+        .filter((file) => file.startsWith("slide") && file.endsWith(".xml"))
+        .sort((a, b) => {
+          const numA = parseInt(a.match(/slide(\d+)\.xml/)?.[1] || "0");
+          const numB = parseInt(b.match(/slide(\d+)\.xml/)?.[1] || "0");
+          return numA - numB;
+        });
+
+      for (const slideFile of xmlFiles) {
+        const slidePath = path.join(slidesDir, slideFile);
+        const slideContent = await fs.readFile(slidePath, "utf-8");
+        
+        
+        const textMatches = slideContent.match(/<a:t[^>]*>([^<]+)<\/a:t>/g);
+        if (textMatches) {
+          textMatches.forEach((match) => {
+            // Extract text content between tags
+            const text = match.replace(/<[^>]+>/g, "").trim();
+            if (text) {
+              allText.push(text);
+            }
+          });
+        }
+      }
+    } catch (dirError: any) {
+      console.warn("Could not read slides directory, trying alternative extraction:", dirError.message);
+      
+      const searchForTextInDir = async (dir: string): Promise<string[]> => {
+        const texts: string[] = [];
+        try {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            
+            if (entry.isDirectory()) {
+              texts.push(...(await searchForTextInDir(fullPath)));
+            } else if (entry.name.endsWith(".xml")) {
+              try {
+                const content = await fs.readFile(fullPath, "utf-8");
+                const parsed = parser.parse(content);
+                
+                const textMatch = content.match(/<a:t[^>]*>([^<]+)<\/a:t>/g);
+                if (textMatch) {
+                  textMatch.forEach((match) => {
+                    const text = match.replace(/<[^>]+>/g, "").trim();
+                    if (text) texts.push(text);
+                  });
+                }
+              } catch (fileError) {
+                continue;
+              }
+            }
+          }
+        } catch (error) {
+        }
+        return texts;
+      };
+      
+      allText = await searchForTextInDir(tempDir);
+    }
+
+    // Clean up temp directory
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(console.error);
+
+    if (allText.length === 0) {
+      throw new Error("No text content found in PowerPoint file");
+    }
+
+    // Join all text with newlines (each slide's text on separate lines)
+    return allText.join("\n");
+  } catch (error: any) {
+    // Clean up temp directory on error
+    await fs.rm(tempDir, { recursive: true, force: true }).catch(console.error);
+    throw error;
   }
 }
 

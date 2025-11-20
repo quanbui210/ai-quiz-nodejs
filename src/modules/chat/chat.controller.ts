@@ -157,6 +157,7 @@ export const createChatSession = async (
         model: session.model,
         createdAt: session.createdAt,
       },
+      allowedModels, // Include allowed models for frontend reference
     });
   } catch (error: any) {
     console.error("Create chat session error:", error);
@@ -202,6 +203,25 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
 
     if (!session) {
       return res.status(404).json({ error: "Chat session not found" });
+    }
+
+    const subscription = await prisma.userSubscription.findUnique({
+      where: { userId: req.user.id },
+      include: { plan: true },
+    });
+
+    const allowedModels =
+      subscription?.allowedModels ||
+      subscription?.plan?.allowedModels ||
+      ["gpt-3.5-turbo"];
+
+    if (!allowedModels.includes(session.model)) {
+      return res.status(403).json({
+        error: "Model not allowed for your current subscription",
+        message: `The model "${session.model}" used in this session is no longer available with your subscription plan. Please create a new chat session with an allowed model.`,
+        allowedModels,
+        currentModel: session.model,
+      });
     }
 
     // Save user message
@@ -275,13 +295,11 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
       }
     }
 
-    // Build conversation history
     const conversationHistory = session.messages.map((msg: { role: string; content: string }) => ({
       role: msg.role.toLowerCase(),
       content: msg.content,
     }));
 
-    // Add system prompt if document context exists
     const systemPrompt =
       session.documentId && contextText
         ? `You are an AI tutor helping a student understand a document. Use the following context from the document to answer questions accurately and thoroughly.
@@ -300,7 +318,6 @@ Instructions:
           ? "You are an AI tutor helping a student understand a document. However, the document content is not yet available. Please inform the user that the document is still being processed."
           : "You are a helpful AI tutor. Answer questions clearly and provide educational explanations.";
 
-    // Prepare messages for OpenAI
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...conversationHistory.map((msg: { role: string; content: string }) => ({
@@ -310,7 +327,6 @@ Instructions:
       { role: "user", content: message },
     ];
 
-    // Get AI response
     const completion = await openai.chat.completions.create({
       model: session.model,
       messages,
@@ -346,6 +362,63 @@ Instructions:
   } catch (error: any) {
     console.error("Send message error:", error);
     return res.status(500).json({ error: "Failed to send message" });
+  }
+};
+
+
+export const getAvailableModels = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const subscription = await prisma.userSubscription.findUnique({
+      where: { userId: req.user.id },
+      include: { plan: true },
+    });
+
+    const allowedModels =
+      subscription?.allowedModels ||
+      subscription?.plan?.allowedModels ||
+      ["gpt-3.5-turbo"];
+
+    const modelInfo: Record<string, { name: string; description: string }> = {
+      "gpt-3.5-turbo": {
+        name: "GPT-3.5 Turbo",
+        description: "Fast and efficient, good for most tasks",
+      },
+      "gpt-4": {
+        name: "GPT-4",
+        description: "More capable, better reasoning and accuracy",
+      },
+      "gpt-4-turbo": {
+        name: "GPT-4 Turbo",
+        description: "Latest GPT-4 with improved performance",
+      },
+      "gpt-4o": {
+        name: "GPT-4o",
+        description: "Optimized GPT-4 model",
+      },
+    };
+
+    const models = allowedModels.map((model) => ({
+      id: model,
+      ...(modelInfo[model] || {
+        name: model,
+        description: "AI model",
+      }),
+    }));
+
+    return res.json({
+      models,
+      defaultModel: allowedModels[0],
+    });
+  } catch (error: any) {
+    console.error("Get available models error:", error);
+    return res.status(500).json({ error: "Failed to fetch available models" });
   }
 };
 
@@ -484,6 +557,80 @@ export const getChatMessages = async (
   } catch (error: any) {
     console.error("Get chat messages error:", error);
     return res.status(500).json({ error: "Failed to fetch chat messages" });
+  }
+};
+
+
+export const updateChatSessionModel = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { sessionId } = req.params;
+    const { model } = req.body;
+
+    if (!model || typeof model !== "string") {
+      return res.status(400).json({ error: "Model is required" });
+    }
+
+    const session = await prisma.chatSession.findFirst({
+      where: {
+        id: sessionId,
+        userId: req.user.id,
+      },
+    });
+
+    if (!session) {
+      return res.status(404).json({ error: "Chat session not found" });
+    }
+
+    const subscription = await prisma.userSubscription.findUnique({
+      where: { userId: req.user.id },
+      include: { plan: true },
+    });
+
+    const allowedModels =
+      subscription?.allowedModels ||
+      subscription?.plan?.allowedModels ||
+      ["gpt-3.5-turbo"];
+
+    if (!allowedModels.includes(model)) {
+      return res.status(403).json({
+        error: "Model not allowed for your subscription",
+        message: `The model "${model}" is not available with your current subscription plan.`,
+        allowedModels,
+        requestedModel: model,
+      });
+    }
+
+    // Update session model
+    const updatedSession = await prisma.chatSession.update({
+      where: { id: sessionId },
+      data: { model },
+      select: {
+        id: true,
+        documentId: true,
+        title: true,
+        model: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
+    return res.json({
+      message: "Chat session model updated successfully",
+      session: updatedSession,
+      allowedModels, // Include for frontend reference
+    });
+  } catch (error: any) {
+    console.error("Update chat session model error:", error);
+    return res
+      .status(500)
+      .json({ error: "Failed to update chat session model" });
   }
 };
 

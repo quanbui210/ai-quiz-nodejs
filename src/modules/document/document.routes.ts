@@ -39,6 +39,8 @@ const fileFilter = (
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
+    "application/vnd.ms-powerpoint", // .ppt (legacy)
     "text/plain",
     "text/markdown",
   ];
@@ -48,7 +50,7 @@ const fileFilter = (
   } else {
     cb(
       new Error(
-        "Invalid file type. Only PDF, Word, and text files are allowed.",
+        "Invalid file type. Only PDF, Word, PowerPoint, and text files are allowed.",
       ),
     );
   }
