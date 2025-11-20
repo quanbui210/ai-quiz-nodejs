@@ -191,38 +191,16 @@ export const handleCallback = async (req: Request, res: Response) => {
           console.error("Failed to check admin status:", adminError);
         }
 
-        // Get frontend URL for redirect
         const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
         const token = data.session.access_token;
 
-        // Redirect to frontend with token in URL hash (for frontend to extract)
-        // Frontend should handle extracting token and storing it
+
         const redirectUrl = `${frontendUrl}?token=${encodeURIComponent(token)}&refresh_token=${encodeURIComponent(data.session.refresh_token || "")}`;
         
         console.log("[OAuth Callback] Redirecting to frontend:", redirectUrl);
         
         return res.redirect(redirectUrl);
       } catch (dbError: any) {
-        console.error("Database error during OAuth callback:", dbError);
-
-        // Check if it's a connection error
-        if (
-          dbError.message?.includes("Can't reach database server") ||
-          dbError.message?.includes("P1001") ||
-          dbError.code === "P1001"
-        ) {
-          return res.status(503).json({
-            error: "Database connection failed",
-            message:
-              "Unable to connect to the database. Your Supabase database may be paused. Please check your Supabase dashboard and restore it if needed.",
-            details:
-              process.env.NODE_ENV === "development"
-                ? dbError.message
-                : undefined,
-          });
-        }
-
-        // For other database errors, return generic error
         return res.status(500).json({
           error: "Failed to complete authentication",
           message:
@@ -248,20 +226,17 @@ export const handleCallback = async (req: Request, res: Response) => {
   }
 };
 
-export const getSession = async (req: Request, res: Response) => {
+export const getSession = async (
+  req: Request & { user?: any },
+  res: Response,
+) => {
   try {
-    const { data, error } = await supabase.auth.getSession();
-
-    if (error || !data.session) {
-      return res
-        .status(401)
-        .json({ error: (error?.message as string) || "No active session" });
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const userId = data.session.user.id;
-
     const adminProfile = await prisma.adminUser.findUnique({
-      where: { userId },
+      where: { userId: req.user.id },
       select: {
         id: true,
         role: true,
@@ -269,22 +244,23 @@ export const getSession = async (req: Request, res: Response) => {
       },
     });
 
-    const response: any = {
-      user: data.session.user,
-      session: data.session,
-    };
+    const bearer = req.headers.authorization;
+    const accessToken =
+      bearer && bearer.startsWith("Bearer ") ? bearer.substring(7) : null;
 
-    if (adminProfile) {
-      response.isAdmin = true;
-      response.admin = {
-        role: adminProfile.role,
-        permissions: adminProfile.permissions,
-      };
-    } else {
-      response.isAdmin = false;
-    }
-
-    return res.json(response);
+    return res.json({
+      user: req.user,
+      isAdmin: Boolean(adminProfile),
+      admin: adminProfile
+        ? {
+            role: adminProfile.role,
+            permissions: adminProfile.permissions,
+          }
+        : undefined,
+      session: {
+        access_token: accessToken,
+      },
+    });
   } catch (error) {
     return res.status(500).json({ error: "Failed to get session" });
   }
@@ -441,30 +417,12 @@ export const getCurrentUser = async (
   res: Response,
 ) => {
   try {
-    const {
-      data: { user: supabaseUser },
-      error: supabaseError,
-    } = await supabase.auth.getUser();
-
-    if (supabaseError || !supabaseUser) {
-      return res
-        .status(401)
-        .json({ error: supabaseError?.message || "No user found" });
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const prismaUser = await prisma.user.findUnique({
-      where: {
-        id: supabaseUser.id,
-      },
-    });
-
-    if (!prismaUser) {
-      return res.status(404).json({ error: "User profile not found" });
-    }
-
-    // Check if user is an admin
     const adminProfile = await prisma.adminUser.findUnique({
-      where: { userId: supabaseUser.id },
+      where: { userId: req.user.id },
       select: {
         id: true,
         role: true,
@@ -472,22 +430,16 @@ export const getCurrentUser = async (
       },
     });
 
-    const response: any = {
-      user: prismaUser,
-    };
-
-    // Add admin information if user is an admin
-    if (adminProfile) {
-      response.isAdmin = true;
-      response.admin = {
-        role: adminProfile.role,
-        permissions: adminProfile.permissions,
-      };
-    } else {
-      response.isAdmin = false;
-    }
-
-    return res.json(response);
+    return res.json({
+      user: req.user,
+      isAdmin: Boolean(adminProfile),
+      admin: adminProfile
+        ? {
+            role: adminProfile.role,
+            permissions: adminProfile.permissions,
+          }
+        : undefined,
+    });
   } catch (error) {
     return res.status(500).json({ error: "Failed to get user" });
   }

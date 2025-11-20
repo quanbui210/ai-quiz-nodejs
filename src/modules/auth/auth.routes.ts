@@ -7,6 +7,7 @@ import {
   getCurrentUser,
   signOut,
 } from "./auth.controller";
+import { authenticate } from "../../middleware/auth.middleware";
 
 const router = Router();
 
@@ -164,7 +165,7 @@ router.post("/callback", handleCallback);
  *             schema:
  *               $ref: "#/components/schemas/Error"
  */
-router.get("/session", getSession);
+router.get("/session", authenticate, getSession);
 
 /**
  * @swagger
@@ -197,7 +198,7 @@ router.get("/session", getSession);
  *             schema:
  *               $ref: "#/components/schemas/Error"
  */
-router.get("/me", getCurrentUser);
+router.get("/me", authenticate, getCurrentUser);
 
 /**
  * @swagger

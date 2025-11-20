@@ -53,7 +53,7 @@ export const authenticate = async (
     if (!prismaUser) {
       prismaUser = await prisma.user.create({
         data: {
-          id: supabaseUser.id, // Use Supabase Auth ID as Prisma User ID
+          id: supabaseUser.id, 
           email: supabaseUser.email as string,
           name:
             supabaseUser.user_metadata?.name ||
