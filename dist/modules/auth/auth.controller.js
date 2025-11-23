@@ -44,17 +44,26 @@ const loginWithGoogle = async (req, res) => {
         const { redirectTo } = req.query;
         const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
         const redirectUrl = redirectTo || `${frontendUrl}/auth/callback`;
+        console.log("[Google OAuth] FRONTEND_URL from env:", process.env.FRONTEND_URL);
+        console.log("[Google OAuth] redirectTo from query:", redirectTo);
+        console.log("[Google OAuth] Final redirectUrl being sent to Supabase:", redirectUrl);
         const { data, error } = await supabase_1.supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
                 redirectTo: redirectUrl,
-                skipBrowserRedirect: false,
+                skipBrowserRedirect: true,
                 queryParams: {
                     access_type: "offline",
                     prompt: "consent",
                 },
             },
         });
+        if (data?.url) {
+            console.log("[Google OAuth] OAuth URL generated:", data.url);
+            const urlObj = new URL(data.url);
+            const redirectUri = urlObj.searchParams.get("redirect_uri");
+            console.log("[Google OAuth] redirect_uri in OAuth URL:", redirectUri);
+        }
         if (error || !data?.url) {
             return res.status(400).json({
                 error: error?.message ||
@@ -189,36 +198,13 @@ const handleCallback = async (req, res) => {
                 catch (adminError) {
                     console.error("Failed to check admin status:", adminError);
                 }
-                const response = {
-                    message: "Authentication successful",
-                    user: data.user,
-                    session: data.session,
-                };
-                if (adminProfile) {
-                    response.isAdmin = true;
-                    response.admin = {
-                        role: adminProfile.role,
-                        permissions: adminProfile.permissions,
-                    };
-                }
-                else {
-                    response.isAdmin = false;
-                }
-                return res.json(response);
+                const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+                const token = data.session.access_token;
+                const redirectUrl = `${frontendUrl}?token=${encodeURIComponent(token)}&refresh_token=${encodeURIComponent(data.session.refresh_token || "")}`;
+                console.log("[OAuth Callback] Redirecting to frontend:", redirectUrl);
+                return res.redirect(redirectUrl);
             }
             catch (dbError) {
-                console.error("Database error during OAuth callback:", dbError);
-                if (dbError.message?.includes("Can't reach database server") ||
-                    dbError.message?.includes("P1001") ||
-                    dbError.code === "P1001") {
-                    return res.status(503).json({
-                        error: "Database connection failed",
-                        message: "Unable to connect to the database. Your Supabase database may be paused. Please check your Supabase dashboard and restore it if needed.",
-                        details: process.env.NODE_ENV === "development"
-                            ? dbError.message
-                            : undefined,
-                    });
-                }
                 return res.status(500).json({
                     error: "Failed to complete authentication",
                     message: "An error occurred while processing your authentication. Please try again.",
@@ -244,36 +230,32 @@ const handleCallback = async (req, res) => {
 exports.handleCallback = handleCallback;
 const getSession = async (req, res) => {
     try {
-        const { data, error } = await supabase_1.supabase.auth.getSession();
-        if (error || !data.session) {
-            return res
-                .status(401)
-                .json({ error: error?.message || "No active session" });
+        if (!req.user) {
+            return res.status(401).json({ error: "Not authenticated" });
         }
-        const userId = data.session.user.id;
         const adminProfile = await prisma_1.default.adminUser.findUnique({
-            where: { userId },
+            where: { userId: req.user.id },
             select: {
                 id: true,
                 role: true,
                 permissions: true,
             },
         });
-        const response = {
-            user: data.session.user,
-            session: data.session,
-        };
-        if (adminProfile) {
-            response.isAdmin = true;
-            response.admin = {
-                role: adminProfile.role,
-                permissions: adminProfile.permissions,
-            };
-        }
-        else {
-            response.isAdmin = false;
-        }
-        return res.json(response);
+        const bearer = req.headers.authorization;
+        const accessToken = bearer && bearer.startsWith("Bearer ") ? bearer.substring(7) : null;
+        return res.json({
+            user: req.user,
+            isAdmin: Boolean(adminProfile),
+            admin: adminProfile
+                ? {
+                    role: adminProfile.role,
+                    permissions: adminProfile.permissions,
+                }
+                : undefined,
+            session: {
+                access_token: accessToken,
+            },
+        });
     }
     catch (error) {
         return res.status(500).json({ error: "Failed to get session" });
@@ -405,42 +387,27 @@ const loginWithEmail = async (req, res) => {
 exports.loginWithEmail = loginWithEmail;
 const getCurrentUser = async (req, res) => {
     try {
-        const { data: { user: supabaseUser }, error: supabaseError, } = await supabase_1.supabase.auth.getUser();
-        if (supabaseError || !supabaseUser) {
-            return res
-                .status(401)
-                .json({ error: supabaseError?.message || "No user found" });
-        }
-        const prismaUser = await prisma_1.default.user.findUnique({
-            where: {
-                id: supabaseUser.id,
-            },
-        });
-        if (!prismaUser) {
-            return res.status(404).json({ error: "User profile not found" });
+        if (!req.user) {
+            return res.status(401).json({ error: "Not authenticated" });
         }
         const adminProfile = await prisma_1.default.adminUser.findUnique({
-            where: { userId: supabaseUser.id },
+            where: { userId: req.user.id },
             select: {
                 id: true,
                 role: true,
                 permissions: true,
             },
         });
-        const response = {
-            user: prismaUser,
-        };
-        if (adminProfile) {
-            response.isAdmin = true;
-            response.admin = {
-                role: adminProfile.role,
-                permissions: adminProfile.permissions,
-            };
-        }
-        else {
-            response.isAdmin = false;
-        }
-        return res.json(response);
+        return res.json({
+            user: req.user,
+            isAdmin: Boolean(adminProfile),
+            admin: adminProfile
+                ? {
+                    role: adminProfile.role,
+                    permissions: adminProfile.permissions,
+                }
+                : undefined,
+        });
     }
     catch (error) {
         return res.status(500).json({ error: "Failed to get user" });

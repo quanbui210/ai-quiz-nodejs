@@ -8,33 +8,36 @@ generator client {
 }
 
 model User {
-  id             String    @id
-  email          String    @unique
-  name           String?
-  avatarUrl      String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  id        String   @id
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  topics         Topic[]
-  quizzes        Quiz[]
-  answers        Answer[]
-  progress       Progress[]
-  attempts       QuizAttempt[]
-  subscription   UserSubscription?
-  usage          UserUsage?
-  documents      Document[]
-  chatSessions   ChatSession[]
-  adminProfile   AdminUser?
+  topics            Topic[]
+  quizzes           Quiz[]
+  answers           Answer[]
+  progress          Progress[]
+  attempts          QuizAttempt[]
+  subscription      UserSubscription?
+  usage             UserUsage?
+  documents         Document[]
+  chatSessions      ChatSession[]
+  adminProfile      AdminUser?
+  resumes           Resume[]
+  interviewSessions InterviewSession[]
+  careerGoals       CareerGoal[]
 }
 
 model Topic {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   name        String
   description String?
-  createdAt   DateTime  @default(now())
+  createdAt   DateTime @default(now())
 
-  user        User      @relation(fields: [userId], references: [id])
-  userId      String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
 
   quizzes     Quiz[]
   progress    Progress[]
@@ -42,116 +45,114 @@ model Topic {
 }
 
 model Quiz {
-  id          String     @id @default(uuid())
-  title       String
-  type        QuizType
-  difficulty  Difficulty
-  createdAt   DateTime   @default(now())
-  expiresAt   DateTime?
-  timer       Int?       // in seconds
-  status      QuizStatus @default(PENDING)
-  count       Int
-  topic       Topic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  topicId     String?
-  document    Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  documentId  String?
+  id         String     @id @default(uuid())
+  title      String
+  type       QuizType
+  difficulty Difficulty
+  createdAt  DateTime   @default(now())
+  expiresAt  DateTime?
+  timer      Int? // in seconds
+  status     QuizStatus @default(PENDING)
+  count      Int
+  topic      Topic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  topicId    String?
+  document   Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentId String?
 
-  user        User       @relation(fields: [userId], references: [id])
-  userId      String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
 
-  questions   Question[]
-  attempts    QuizAttempt[]
-  
+  questions Question[]
+  attempts  QuizAttempt[]
+
   @@index([documentId])
 }
 
 model Question {
-  id          String        @id @default(uuid())
-  text        String
-  type        QuestionType
-  options     Json?         // For MCQ (array of strings)
-  correct     String?       // Correct answer
-  createdAt   DateTime      @default(now())
+  id        String       @id @default(uuid())
+  text      String
+  type      QuestionType
+  options   Json? // For MCQ (array of strings)
+  correct   String? // Correct answer
+  createdAt DateTime     @default(now())
 
-  quiz        Quiz          @relation(fields: [quizId], references: [id])
-  quizId      String
+  quiz   Quiz   @relation(fields: [quizId], references: [id])
+  quizId String
 
   explanation Explanation?
   answers     Answer[]
 }
 
 model Answer {
-  id          String     @id @default(uuid())
-  userAnswer  String
-  isCorrect   Boolean
-  createdAt   DateTime   @default(now())
+  id         String   @id @default(uuid())
+  userAnswer String
+  isCorrect  Boolean
+  createdAt  DateTime @default(now())
 
-  question    Question   @relation(fields: [questionId], references: [id])
-  questionId  String
+  question   Question @relation(fields: [questionId], references: [id])
+  questionId String
 
-  user        User       @relation(fields: [userId], references: [id])
-  userId      String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
 
-  attempt     QuizAttempt? @relation(fields: [attemptId], references: [id])
-  attemptId   String?
+  attempt   QuizAttempt? @relation(fields: [attemptId], references: [id])
+  attemptId String?
 }
 
 model QuizAttempt {
-  id            String        @id @default(uuid())
-  status        AttemptStatus @default(IN_PROGRESS)
-  score         Float?        // Percentage score (0-100), null until completed
-  correctCount  Int?          // null until completed
-  totalQuestions Int          // Total questions in the quiz
-  elapsedTime   Int?          // Time elapsed so far in seconds (for paused attempts)
-  timeSpent     Int?          // Final time spent in seconds (only set when completed)
-  pausedAt      DateTime?     // When the attempt was paused
-  completedAt   DateTime?     // When the attempt was completed (null if in progress/paused)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @default(now()) @updatedAt
+  id             String        @id @default(uuid())
+  status         AttemptStatus @default(IN_PROGRESS)
+  score          Float? // Percentage score (0-100), null until completed
+  correctCount   Int? // null until completed
+  totalQuestions Int // Total questions in the quiz
+  elapsedTime    Int? // Time elapsed so far in seconds (for paused attempts)
+  timeSpent      Int? // Final time spent in seconds (only set when completed)
+  pausedAt       DateTime? // When the attempt was paused
+  completedAt    DateTime? // When the attempt was completed (null if in progress/paused)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @default(now()) @updatedAt
 
-  quiz          Quiz          @relation(fields: [quizId], references: [id])
-  quizId        String
+  quiz   Quiz   @relation(fields: [quizId], references: [id])
+  quizId String
 
-  user          User          @relation(fields: [userId], references: [id])
-  userId        String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
 
-  answers       Answer[]
+  answers Answer[]
 }
 
 model Explanation {
-  id           String    @id @default(uuid())
-  content      String
-  createdAt    DateTime  @default(now())
+  id        String   @id @default(uuid())
+  content   String
+  createdAt DateTime @default(now())
 
-  question     Question  @relation(fields: [questionId], references: [id])
-  questionId   String    @unique
+  question   Question @relation(fields: [questionId], references: [id])
+  questionId String   @unique
 }
 
 model Progress {
-  id           String    @id @default(uuid())
-  score        Float     @default(0)
-  total        Int       @default(0)
-  streak       Int       @default(0)
-  lastActive   DateTime  @default(now())
+  id         String   @id @default(uuid())
+  score      Float    @default(0)
+  total      Int      @default(0)
+  streak     Int      @default(0)
+  lastActive DateTime @default(now())
 
-  topic        Topic     @relation(fields: [topicId], references: [id])
-  topicId      String
+  topic   Topic  @relation(fields: [topicId], references: [id])
+  topicId String
 
-  user         User      @relation(fields: [userId], references: [id])
-  userId       String
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
 }
 
 model Suggestion {
-  id           String    @id @default(uuid())
+  id             String   @id @default(uuid())
   suggestedTopic String
-  reason        String?
-  createdAt     DateTime  @default(now())
+  reason         String?
+  createdAt      DateTime @default(now())
 
-  topic         Topic     @relation(fields: [topicId], references: [id])
-  topicId       String
+  topic   Topic  @relation(fields: [topicId], references: [id])
+  topicId String
 }
-
-
 
 enum QuizType {
   MULTIPLE_CHOICE
@@ -197,125 +198,150 @@ model SubscriptionPlan {
   maxQuizzes      Int      @default(10)
   maxDocuments    Int      @default(0)
   allowedModels   String[] // e.g., ["gpt-3.5-turbo", "gpt-4-turbo"]
-  
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  
-  subscriptions   UserSubscription[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subscriptions UserSubscription[]
 }
 
-
 model UserSubscription {
-  id                String   @id @default(uuid())
-  userId            String   @unique
-  planId            String
-  stripeCustomerId  String?  @unique
+  id                   String  @id @default(uuid())
+  userId               String  @unique
+  planId               String
+  stripeCustomerId     String? @unique
   stripeSubscriptionId String? @unique
-  
+
   // Current effective limits (can be overridden by admin)
-  maxTopics         Int
-  maxQuizzes        Int
-  maxDocuments      Int
-  allowedModels     String[]
-  
+  maxTopics     Int
+  maxQuizzes    Int
+  maxDocuments  Int
+  allowedModels String[]
+
   // Subscription status
-  status            SubscriptionStatus @default(ACTIVE)
+  status             SubscriptionStatus @default(ACTIVE)
   currentPeriodStart DateTime?
   currentPeriodEnd   DateTime?
-  cancelAtPeriodEnd  Boolean @default(false)
-  
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  plan              SubscriptionPlan @relation(fields: [planId], references: [id])
-  
+  cancelAtPeriodEnd  Boolean            @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan SubscriptionPlan @relation(fields: [planId], references: [id])
+
   @@index([userId])
   @@index([stripeCustomerId])
   @@index([stripeSubscriptionId])
 }
 
 model UserUsage {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  
-  topicsCount   Int      @default(0)
-  quizzesCount  Int      @default(0)
-  documentsCount Int     @default(0)
-  
-  lastResetAt   DateTime @default(now())
-  
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id     String @id @default(uuid())
+  userId String @unique
+
+  topicsCount    Int @default(0)
+  quizzesCount   Int @default(0)
+  documentsCount Int @default(0)
+
+  lastResetAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 
 model AdminUser {
-  id            String   @id @default(uuid())
-  userId        String   @unique
-  role          AdminRole @default(MODERATOR)
-  permissions   String[]
-  createdAt     DateTime @default(now())
-  
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  role        AdminRole @default(MODERATOR)
+  permissions String[]
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 
 model Document {
-  id            String   @id @default(uuid())
-  userId        String
-  filename      String
-  filePath      String
-  fileSize      Int
-  mimeType      String
-  status        DocumentStatus @default(UPLOADING)
-  vectorized    Boolean  @default(false)
-  chunkCount    Int      @default(0)
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  embeddings    DocumentEmbedding[]
-  chatSessions  ChatSession[]
-  quizzes       Quiz[]
-  
+  id         String         @id @default(uuid())
+  userId     String
+  filename   String
+  filePath   String
+  fileSize   Int
+  mimeType   String
+  status     DocumentStatus @default(UPLOADING)
+  vectorized Boolean        @default(false)
+  chunkCount Int            @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  embeddings   DocumentEmbedding[]
+  chatSessions ChatSession[]
+  quizzes      Quiz[]
+  resume       Resume?
+
   @@index([userId])
   @@index([status])
   @@index([vectorized])
 }
 
+model Resume {
+  id         String       @id @default(uuid())
+  userId     String
+  documentId String?      @unique
+  title      String?
+  filename   String
+  filePath   String
+  mimeType   String
+  status     ResumeStatus @default(PENDING)
+  parsedText String?      @db.Text
+  analysisScore Float?    // Overall resume quality score (0-100)
+  analysisStrengths String[] // What's good about the resume
+  analysisWeaknesses String[] // Areas for improvement
+  analysisSuggestions Json? // Detailed suggestions and recommendations
+  analyzedAt DateTime?   // When analysis was performed
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document          Document?          @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  interviewSessions InterviewSession[]
+
+  @@index([userId])
+}
+
 model DocumentEmbedding {
-  id            String   @id @default(uuid())
-  documentId    String
-  chunkIndex    Int
-  chunkText     String   @db.Text
-  embedding     Unsupported("vector(1536)") // OpenAI embedding dimension
-  metadata      Json?    // Store additional metadata like page number, section, etc.
-  
-  createdAt     DateTime @default(now())
-  
-  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  
+  id         String                      @id @default(uuid())
+  documentId String
+  chunkIndex Int
+  chunkText  String                      @db.Text
+  embedding  Unsupported("vector(1536)") // OpenAI embedding dimension
+  metadata   Json? // Store additional metadata like page number, section, etc.
+
+  createdAt DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
   @@index([documentId])
   @@index([chunkIndex])
 }
 
 model ChatSession {
-  id            String   @id @default(uuid())
-  userId       String
-  documentId   String?
-  title        String?  // Auto-generated or user-provided
-  model        String   @default("gpt-4-turbo") // AI model used
-  
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document     Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  messages     ChatMessage[]
-  
+  id         String  @id @default(uuid())
+  userId     String
+  documentId String?
+  title      String? // Auto-generated or user-provided
+  model      String  @default("gpt-4-turbo") // AI model used
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
   @@index([userId])
   @@index([documentId])
 }
@@ -325,13 +351,13 @@ model ChatMessage {
   sessionId     String
   role          ChatRole
   content       String   @db.Text
-  contextChunks Json?    // Store relevant document chunks used for RAG
-  tokenCount    Int?     // Track token usage
-  
-  createdAt     DateTime @default(now())
-  
-  session       ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  
+  contextChunks Json? // Store relevant document chunks used for RAG
+  tokenCount    Int? // Track token usage
+
+  createdAt DateTime @default(now())
+
+  session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
   @@index([sessionId])
   @@index([createdAt])
 }
@@ -361,4 +387,236 @@ enum ChatRole {
   USER
   ASSISTANT
   SYSTEM
+}
+
+enum ResumeStatus {
+  PENDING
+  PROCESSING
+  READY
+  FAILED
+}
+
+model InterviewSession {
+  id                String          @id @default(uuid())
+  userId            String
+  resumeId          String?
+  role              String
+  roleDescription   String?         @db.Text
+  level             InterviewLevel
+  yearsOfExperience Int?
+  country           String?
+  industry          String?
+  status            InterviewStatus @default(IN_PROGRESS)
+  overallScore      Float?
+  strengths         String[]
+  weaknesses        String[]
+  recommendations   Json?
+  totalQuestions    Int             @default(0)
+  answeredCount     Int             @default(0)
+  startedAt         DateTime        @default(now())
+  completedAt       DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume    Resume?             @relation(fields: [resumeId], references: [id], onDelete: SetNull)
+  questions InterviewQuestion[]
+  notes     InterviewNote[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model InterviewQuestion {
+  id         String           @id @default(uuid())
+  sessionId  String
+  question   String           @db.Text
+  type       QuestionCategory
+  order      Int
+  aiFeedback Json?
+  createdAt  DateTime         @default(now())
+
+  session InterviewSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  answers InterviewAnswer[]
+
+  @@index([sessionId])
+  @@index([order])
+}
+
+model InterviewAnswer {
+  id              String   @id @default(uuid())
+  questionId      String
+  userAnswer      String   @db.Text
+  aiScore         Float?
+  improvementTips String?  @db.Text
+  starFormatScore Json?
+  answeredAt      DateTime @default(now())
+
+  question InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@index([questionId])
+}
+
+model InterviewNote {
+  id        String   @id @default(uuid())
+  sessionId String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session InterviewSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+}
+
+enum InterviewLevel {
+  INTERN
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  STAFF
+}
+
+enum InterviewStatus {
+  IN_PROGRESS
+  PAUSED
+  COMPLETED
+  ABANDONED
+}
+
+enum QuestionCategory {
+  TECHNICAL
+  BEHAVIORAL
+  SYSTEM_DESIGN
+  HR
+  CULTURE_FIT
+}
+
+model CareerGoal {
+  id               String     @id @default(uuid())
+  userId           String
+  currentRole      String
+  targetRole       String
+  timeframe        Timeframe
+  currentSkills    String[]
+  requiredSkills   String[]
+  skillGapAnalysis Json?
+  roadmapPlan      Json?
+  progress         Float      @default(0)
+  status           GoalStatus @default(ACTIVE)
+  startedAt        DateTime   @default(now())
+  targetDate       DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  user       User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks      CareerTask[]
+  resources  CareerResource[]
+  milestones CareerMilestone[]
+
+  @@index([userId])
+  @@index([status])
+}
+
+model CareerTask {
+  id             String     @id @default(uuid())
+  goalId         String
+  phase          Int
+  title          String
+  description    String?    @db.Text
+  taskType       TaskType
+  dueDate        DateTime?
+  status         TaskStatus @default(PENDING)
+  completedAt    DateTime?
+  order          Int        @default(0)
+  estimatedHours Int?
+  dependencies   String[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  goal            CareerGoal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  careerResources CareerResource[]
+
+  @@index([goalId])
+  @@index([status])
+  @@index([phase])
+}
+
+model CareerResource {
+  id             String       @id @default(uuid())
+  goalId         String
+  taskId         String?
+  title          String
+  url            String?
+  resourceType   ResourceType
+  description    String?      @db.Text
+  estimatedHours Int?
+  difficulty     Difficulty
+  isCompleted    Boolean      @default(false)
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+
+  goal CareerGoal  @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  task CareerTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  @@index([goalId])
+  @@index([taskId])
+}
+
+model CareerMilestone {
+  id          String    @id @default(uuid())
+  goalId      String
+  title       String
+  description String?   @db.Text
+  targetDate  DateTime
+  achievedAt  DateTime?
+  isAchieved  Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  goal CareerGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@index([isAchieved])
+}
+
+enum Timeframe {
+  THREE_MONTHS
+  SIX_MONTHS
+  TWELVE_MONTHS
+  CUSTOM
+}
+
+enum GoalStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum TaskType {
+  LEARNING
+  PROJECT
+  PRACTICE
+  INTERVIEW_PREP
+  CERTIFICATION
+  NETWORKING
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum ResourceType {
+  COURSE
+  VIDEO
+  DOCUMENTATION
+  ARTICLE
+  BOOK
+  TUTORIAL
+  PROJECT_TEMPLATE
 }

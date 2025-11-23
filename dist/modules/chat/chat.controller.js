@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteChatSession = exports.getChatMessages = exports.listChatSessions = exports.getChatSession = exports.sendMessage = exports.createChatSession = void 0;
+exports.deleteChatSession = exports.updateChatSessionModel = exports.getChatMessages = exports.listChatSessions = exports.getChatSession = exports.getAvailableModels = exports.sendMessage = exports.createChatSession = void 0;
 const prisma_1 = __importDefault(require("../../utils/prisma"));
 const openai_1 = __importDefault(require("openai"));
 const embeddings_1 = require("../../utils/embeddings");
@@ -140,6 +140,7 @@ const createChatSession = async (req, res) => {
                 model: session.model,
                 createdAt: session.createdAt,
             },
+            allowedModels,
         });
     }
     catch (error) {
@@ -175,6 +176,21 @@ const sendMessage = async (req, res) => {
         });
         if (!session) {
             return res.status(404).json({ error: "Chat session not found" });
+        }
+        const subscription = await prisma_1.default.userSubscription.findUnique({
+            where: { userId: req.user.id },
+            include: { plan: true },
+        });
+        const allowedModels = subscription?.allowedModels ||
+            subscription?.plan?.allowedModels ||
+            ["gpt-3.5-turbo"];
+        if (!allowedModels.includes(session.model)) {
+            return res.status(403).json({
+                error: "Model not allowed for your current subscription",
+                message: `The model "${session.model}" used in this session is no longer available with your subscription plan. Please create a new chat session with an allowed model.`,
+                allowedModels,
+                currentModel: session.model,
+            });
         }
         const userMessage = await prisma_1.default.chatMessage.create({
             data: {
@@ -286,6 +302,54 @@ Instructions:
     }
 };
 exports.sendMessage = sendMessage;
+const getAvailableModels = async (req, res) => {
+    try {
+        if (!req.user?.id) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+        const subscription = await prisma_1.default.userSubscription.findUnique({
+            where: { userId: req.user.id },
+            include: { plan: true },
+        });
+        const allowedModels = subscription?.allowedModels ||
+            subscription?.plan?.allowedModels ||
+            ["gpt-3.5-turbo"];
+        const modelInfo = {
+            "gpt-3.5-turbo": {
+                name: "GPT-3.5 Turbo",
+                description: "Fast and efficient, good for most tasks",
+            },
+            "gpt-4": {
+                name: "GPT-4",
+                description: "More capable, better reasoning and accuracy",
+            },
+            "gpt-4-turbo": {
+                name: "GPT-4 Turbo",
+                description: "Latest GPT-4 with improved performance",
+            },
+            "gpt-4o": {
+                name: "GPT-4o",
+                description: "Optimized GPT-4 model",
+            },
+        };
+        const models = allowedModels.map((model) => ({
+            id: model,
+            ...(modelInfo[model] || {
+                name: model,
+                description: "AI model",
+            }),
+        }));
+        return res.json({
+            models,
+            defaultModel: allowedModels[0],
+        });
+    }
+    catch (error) {
+        console.error("Get available models error:", error);
+        return res.status(500).json({ error: "Failed to fetch available models" });
+    }
+};
+exports.getAvailableModels = getAvailableModels;
 const getChatSession = async (req, res) => {
     try {
         if (!req.user?.id) {
@@ -398,6 +462,66 @@ const getChatMessages = async (req, res) => {
     }
 };
 exports.getChatMessages = getChatMessages;
+const updateChatSessionModel = async (req, res) => {
+    try {
+        if (!req.user?.id) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+        const { sessionId } = req.params;
+        const { model } = req.body;
+        if (!model || typeof model !== "string") {
+            return res.status(400).json({ error: "Model is required" });
+        }
+        const session = await prisma_1.default.chatSession.findFirst({
+            where: {
+                id: sessionId,
+                userId: req.user.id,
+            },
+        });
+        if (!session) {
+            return res.status(404).json({ error: "Chat session not found" });
+        }
+        const subscription = await prisma_1.default.userSubscription.findUnique({
+            where: { userId: req.user.id },
+            include: { plan: true },
+        });
+        const allowedModels = subscription?.allowedModels ||
+            subscription?.plan?.allowedModels ||
+            ["gpt-3.5-turbo"];
+        if (!allowedModels.includes(model)) {
+            return res.status(403).json({
+                error: "Model not allowed for your subscription",
+                message: `The model "${model}" is not available with your current subscription plan.`,
+                allowedModels,
+                requestedModel: model,
+            });
+        }
+        const updatedSession = await prisma_1.default.chatSession.update({
+            where: { id: sessionId },
+            data: { model },
+            select: {
+                id: true,
+                documentId: true,
+                title: true,
+                model: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+        return res.json({
+            message: "Chat session model updated successfully",
+            session: updatedSession,
+            allowedModels,
+        });
+    }
+    catch (error) {
+        console.error("Update chat session model error:", error);
+        return res
+            .status(500)
+            .json({ error: "Failed to update chat session model" });
+    }
+};
+exports.updateChatSessionModel = updateChatSessionModel;
 const deleteChatSession = async (req, res) => {
     try {
         if (!req.user?.id) {

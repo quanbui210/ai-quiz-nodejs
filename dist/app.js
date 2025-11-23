@@ -16,6 +16,9 @@ const subscription_routes_1 = __importDefault(require("./modules/subscription/su
 const admin_routes_1 = __importDefault(require("./modules/admin/admin.routes"));
 const document_routes_1 = __importDefault(require("./modules/document/document.routes"));
 const chat_routes_1 = __importDefault(require("./modules/chat/chat.routes"));
+const interview_routes_1 = __importDefault(require("./modules/interview/interview.routes"));
+const career_routes_1 = __importDefault(require("./modules/career/career.routes"));
+const resume_routes_1 = __importDefault(require("./modules/resume/resume.routes"));
 const subscription_controller_1 = require("./modules/subscription/subscription.controller");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -23,7 +26,7 @@ const PORT = process.env.PORT || 3001;
 const corsOptions = {
     origin: process.env.FRONTEND_URL || "http://localhost:3000",
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
 };
 app.use((0, cors_1.default)(corsOptions));
@@ -45,6 +48,9 @@ app.get("/", (req, res) => {
             admin: "/api/v1/admin",
             documents: "/api/v1/documents",
             chat: "/api/v1/chat",
+            interview: "/api/v1/interview",
+            career: "/api/v1/career",
+            resume: "/api/v1/resume",
         },
         swagger: "/api-docs",
     });
@@ -57,6 +63,9 @@ app.use("/api/v1/subscription", subscription_routes_1.default);
 app.use("/api/v1/admin", admin_routes_1.default);
 app.use("/api/v1/documents", document_routes_1.default);
 app.use("/api/v1/chat", chat_routes_1.default);
+app.use("/api/v1/interview", interview_routes_1.default);
+app.use("/api/v1/career", career_routes_1.default);
+app.use("/api/v1/resume", resume_routes_1.default);
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
     console.log(`Swagger UI available at http://localhost:${PORT}/api-docs`);

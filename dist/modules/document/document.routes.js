@@ -29,6 +29,8 @@ const fileFilter = (req, file, cb) => {
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.ms-powerpoint",
         "text/plain",
         "text/markdown",
     ];
@@ -36,7 +38,7 @@ const fileFilter = (req, file, cb) => {
         cb(null, true);
     }
     else {
-        cb(new Error("Invalid file type. Only PDF, Word, and text files are allowed."));
+        cb(new Error("Invalid file type. Only PDF, Word, PowerPoint, and text files are allowed."));
     }
 };
 const upload = (0, multer_1.default)({

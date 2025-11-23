@@ -177,7 +177,10 @@ const listDocuments = async (req, res) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
         const documents = await prisma_1.default.document.findMany({
-            where: { userId: req.user.id },
+            where: {
+                userId: req.user.id,
+                resume: null,
+            },
             orderBy: { createdAt: "desc" },
             select: {
                 id: true,
