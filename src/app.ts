@@ -11,6 +11,9 @@ import subscriptionRoutes from "./modules/subscription/subscription.routes";
 import adminRoutes from "./modules/admin/admin.routes";
 import documentRoutes from "./modules/document/document.routes";
 import chatRoutes from "./modules/chat/chat.routes";
+import interviewRoutes from "./modules/interview/interview.routes";
+import careerRoutes from "./modules/career/career.routes";
+import resumeRoutes from "./modules/resume/resume.routes";
 import { handleWebhook } from "./modules/subscription/subscription.controller";
 
 
@@ -22,7 +25,7 @@ const PORT = process.env.PORT || 3001;
 const corsOptions = {
   origin: process.env.FRONTEND_URL || "http://localhost:3000",
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
 };
 
@@ -74,6 +77,9 @@ app.get("/", (req, res) => {
       admin: "/api/v1/admin",
       documents: "/api/v1/documents",
       chat: "/api/v1/chat",
+      interview: "/api/v1/interview",
+      career: "/api/v1/career",
+      resume: "/api/v1/resume",
     },
     swagger: "/api-docs",
   });
@@ -87,6 +93,9 @@ app.use("/api/v1/subscription", subscriptionRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/chat", chatRoutes);
+app.use("/api/v1/interview", interviewRoutes);
+app.use("/api/v1/career", careerRoutes);
+app.use("/api/v1/resume", resumeRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

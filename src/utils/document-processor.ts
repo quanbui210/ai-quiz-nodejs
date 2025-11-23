@@ -101,8 +101,6 @@ async function extractTextFromPowerPoint(filePath: string): Promise<string> {
     }
     
     // For .ppt (legacy format - binary, harder to parse)
-    // Note: .ppt files are binary and require special libraries
-    // For now, we'll throw an error suggesting conversion to .pptx
     if (ext === ".ppt") {
       throw new Error(
         "Legacy .ppt format is not supported. Please convert to .pptx format or use a newer PowerPoint file."
@@ -115,10 +113,7 @@ async function extractTextFromPowerPoint(filePath: string): Promise<string> {
   }
 }
 
-/**
- * Extract text from .pptx file (OpenXML format)
- * .pptx files are ZIP archives with XML files inside
- */
+
 async function extractTextFromPPTX(filePath: string): Promise<string> {
   const tempDir = path.join(path.dirname(filePath), `temp-${Date.now()}`);
   const parser = new XMLParser({
@@ -204,17 +199,14 @@ async function extractTextFromPPTX(filePath: string): Promise<string> {
       allText = await searchForTextInDir(tempDir);
     }
 
-    // Clean up temp directory
     await fs.rm(tempDir, { recursive: true, force: true }).catch(console.error);
 
     if (allText.length === 0) {
       throw new Error("No text content found in PowerPoint file");
     }
 
-    // Join all text with newlines (each slide's text on separate lines)
     return allText.join("\n");
   } catch (error: any) {
-    // Clean up temp directory on error
     await fs.rm(tempDir, { recursive: true, force: true }).catch(console.error);
     throw error;
   }
@@ -250,7 +242,6 @@ export function chunkText(
         },
       });
 
-      // Start new chunk with overlap (last part of previous chunk)
       const overlapText = currentChunk.slice(-chunkOverlap);
       currentChunk = overlapText + " " + sentence;
       startIndex = startIndex + currentChunk.length - chunkOverlap;

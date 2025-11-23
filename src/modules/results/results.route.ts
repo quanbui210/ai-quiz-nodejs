@@ -142,7 +142,7 @@ router.get("/quiz/:quizId", authenticate, getQuizResult);
  * /api/v1/results/analytics/me:
  *   get:
  *     summary: Get comprehensive user analytics for dashboard
- *     description: Returns overall statistics including all topics, quizzes, attempts, performance metrics, and time analytics
+ *     description: Returns overall statistics across all learning features: quizzes, interview prep, career roadmaps, resume analysis, and documents. Includes performance metrics, weekly comparisons, and recent activity.
  *     tags: [Results]
  *     security:
  *       - bearerAuth: []

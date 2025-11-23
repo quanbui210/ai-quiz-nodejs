@@ -86,6 +86,15 @@ export const getPlans = async (req: Request, res: Response) => {
             maxDocuments: product?.metadata?.maxDocuments
               ? parseInt(product.metadata.maxDocuments, 10)
               : plan.maxDocuments,
+            maxCareerRoadmaps: product?.metadata?.maxCareerRoadmaps
+              ? parseInt(product.metadata.maxCareerRoadmaps, 10)
+              : plan.maxCareerRoadmaps,
+            maxInterviewSessionsPerMonth: product?.metadata?.maxInterviewSessionsPerMonth
+              ? parseInt(product.metadata.maxInterviewSessionsPerMonth, 10)
+              : plan.maxInterviewSessionsPerMonth,
+            maxResumes: product?.metadata?.maxResumes
+              ? parseInt(product.metadata.maxResumes, 10)
+              : plan.maxResumes,
             allowedModels: (() => {
               if (product?.metadata?.allowedModels) {
                 try {
@@ -162,9 +171,12 @@ export const getMySubscription = async (
         topicsCount: usage.topicsCount,
         quizzesCount: usage.quizzesCount,
         documentsCount: usage.documentsCount,
-        topicsRemaining: subscription.maxTopics - usage.topicsCount,
-        quizzesRemaining: subscription.maxQuizzes - usage.quizzesCount,
-        documentsRemaining: subscription.maxDocuments - usage.documentsCount,
+        topicsRemaining: subscription.maxTopics === -1 ? -1 : subscription.maxTopics - usage.topicsCount,
+        quizzesRemaining: subscription.maxQuizzes === -1 ? -1 : subscription.maxQuizzes - usage.quizzesCount,
+        documentsRemaining: subscription.maxDocuments === -1 ? -1 : subscription.maxDocuments - usage.documentsCount,
+        careerRoadmapsRemaining: subscription.maxCareerRoadmaps === -1 ? -1 : subscription.maxCareerRoadmaps - usage.careerRoadmapsCount,
+        interviewSessionsRemaining: subscription.maxInterviewSessionsPerMonth === -1 ? -1 : subscription.maxInterviewSessionsPerMonth - usage.interviewSessionsThisMonth,
+        resumesRemaining: subscription.maxResumes === -1 ? -1 : subscription.maxResumes - usage.resumesCount,
       },
     });
   } catch (error: any) {
@@ -439,6 +451,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       maxTopics: 0,
       maxQuizzes: 0,
       maxDocuments: 0,
+      maxCareerRoadmaps: 1,
+      maxInterviewSessionsPerMonth: 3,
+      maxResumes: 2,
       allowedModels: [],
       status: "ACTIVE",
       currentPeriodStart,

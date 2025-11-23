@@ -210,8 +210,12 @@ export const listDocuments = async (
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    // Get all documents, excluding those linked to resumes
     const documents = await prisma.document.findMany({
-      where: { userId: req.user.id },
+      where: {
+        userId: req.user.id,
+        resume: null, // Exclude documents that are linked to resumes
+      },
       orderBy: { createdAt: "desc" },
       select: {
         id: true,

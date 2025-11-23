@@ -26,6 +26,9 @@ export const getOrCreateDefaultSubscription = async (userId: string) => {
       maxTopics: defaultPlan.maxTopics,
       maxQuizzes: defaultPlan.maxQuizzes,
       maxDocuments: defaultPlan.maxDocuments,
+      maxCareerRoadmaps: defaultPlan.maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth: defaultPlan.maxInterviewSessionsPerMonth,
+      maxResumes: defaultPlan.maxResumes,
       allowedModels: defaultPlan.allowedModels,
       status: SubscriptionStatus.ACTIVE,
     },
@@ -60,6 +63,9 @@ export const updateSubscriptionFromPlan = async (
       maxTopics: plan.maxTopics,
       maxQuizzes: plan.maxQuizzes,
       maxDocuments: plan.maxDocuments,
+      maxCareerRoadmaps: plan.maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth: plan.maxInterviewSessionsPerMonth,
+      maxResumes: plan.maxResumes,
       allowedModels: plan.allowedModels,
     },
     include: { plan: true },
@@ -74,6 +80,9 @@ export const updateSubscriptionLimits = async (
     maxTopics?: number;
     maxQuizzes?: number;
     maxDocuments?: number;
+    maxCareerRoadmaps?: number;
+    maxInterviewSessionsPerMonth?: number;
+    maxResumes?: number;
     allowedModels?: string[];
   },
 ) => {
@@ -83,6 +92,12 @@ export const updateSubscriptionLimits = async (
     updateData.maxQuizzes = limits.maxQuizzes;
   if (limits.maxDocuments !== undefined)
     updateData.maxDocuments = limits.maxDocuments;
+  if (limits.maxCareerRoadmaps !== undefined)
+    updateData.maxCareerRoadmaps = limits.maxCareerRoadmaps;
+  if (limits.maxInterviewSessionsPerMonth !== undefined)
+    updateData.maxInterviewSessionsPerMonth = limits.maxInterviewSessionsPerMonth;
+  if (limits.maxResumes !== undefined)
+    updateData.maxResumes = limits.maxResumes;
   if (limits.allowedModels !== undefined)
     updateData.allowedModels = limits.allowedModels;
 

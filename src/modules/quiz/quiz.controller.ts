@@ -451,6 +451,7 @@ export const createQuiz = async (
       timer,
       topicId,
       topic,
+      careerGoalId,
     } = req.body;
 
     if (!req.user || !req.user.id) {
@@ -477,8 +478,8 @@ export const createQuiz = async (
         error: "questionCount is required and must be a positive number",
       });
     }
-    if (!topicId || typeof topicId !== "string") {
-      return res.status(400).json({ error: "topicId is required" });
+    if (topicId !== undefined && topicId !== null && typeof topicId !== "string") {
+      return res.status(400).json({ error: "topicId must be a string if provided" });
     }
     if (!process.env.OPENAI_API_KEY) {
       return res
@@ -683,7 +684,8 @@ export const createQuiz = async (
             ? Number(timer)
             : null,
         status: QuizStatus.PENDING,
-        topicId,
+        topicId: topicId || null,
+        careerGoalId: careerGoalId || null,
         userId: req.user.id,
         questions: {
           create: parsedQuiz.questions.map((q) => ({

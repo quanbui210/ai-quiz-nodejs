@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
-import { AttemptStatus, Difficulty } from "@prisma/client";
+import { AttemptStatus, Difficulty, DocumentStatus } from "@prisma/client";
 
 export const getQuizResult = async (
   req: Request & { user?: any },
@@ -313,6 +313,7 @@ export const getUserStats = async (
 
     const userId = req.user.id;
 
+    // Calculate date ranges
     const now = new Date();
     const startOfToday = new Date(now.setHours(0, 0, 0, 0));
     const startOfWeek = new Date(startOfToday);
@@ -320,6 +321,7 @@ export const getUserStats = async (
     const startOfLastWeek = new Date(startOfWeek);
     startOfLastWeek.setDate(startOfWeek.getDate() - 7);
     const endOfLastWeek = new Date(startOfWeek);
+
 
     const [totalTopics, totalQuizzes, totalAttempts, totalQuestions] =
       await Promise.all([
@@ -674,33 +676,274 @@ export const getUserStats = async (
         ? (averageTimeSpent._avg.timeSpent / averageTimeSet._avg.timer) * 100
         : null;
 
+
+    const [
+      totalInterviewSessions,
+      completedInterviewSessions,
+      interviewSessionsThisWeek,
+      interviewSessionsLastWeek,
+    ] = await Promise.all([
+      prisma.interviewSession.count({ where: { userId } }),
+      prisma.interviewSession.count({
+        where: { userId, status: "COMPLETED" },
+      }),
+      prisma.interviewSession.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfWeek },
+        },
+      }),
+      prisma.interviewSession.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        },
+      }),
+    ]);
+
+    const interviewScoreStats = await prisma.interviewSession.aggregate({
+      where: {
+        userId,
+        status: "COMPLETED",
+        overallScore: { not: null },
+      },
+      _avg: { overallScore: true },
+      _max: { overallScore: true },
+    });
+
+    const interviewSessionsByLevel = await prisma.interviewSession.groupBy({
+      by: ["level"],
+      where: { userId },
+      _count: { id: true },
+    });
+
+    const recentInterviewSessions = await prisma.interviewSession.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        role: true,
+        level: true,
+        status: true,
+        overallScore: true,
+        completedAt: true,
+        createdAt: true,
+      },
+    });
+
+    
+    // 3. CAREER ROADMAP ANALYTICS
+    
+    const [
+      totalCareerGoals,
+      activeCareerGoals,
+      completedCareerGoals,
+      careerGoalsThisWeek,
+      careerGoalsLastWeek,
+    ] = await Promise.all([
+      prisma.careerGoal.count({ where: { userId } }),
+      prisma.careerGoal.count({
+        where: { userId, status: "ACTIVE" },
+      }),
+      prisma.careerGoal.count({
+        where: { userId, status: "COMPLETED" },
+      }),
+      prisma.careerGoal.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfWeek },
+        },
+      }),
+      prisma.careerGoal.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        },
+      }),
+    ]);
+
+    const careerGoalsWithProgress = await prisma.careerGoal.findMany({
+      where: { userId },
+      select: {
+        progress: true,
+      },
+    });
+
+    const totalRoadmapTasks = await prisma.careerTask.count({
+      where: {
+        goal: { userId },
+      },
+    });
+
+    const completedRoadmapTasks = await prisma.careerTask.count({
+      where: {
+        goal: { userId },
+        status: "COMPLETED",
+      },
+    });
+
+    const roadmapTasksThisWeek = await prisma.careerTask.count({
+      where: {
+        goal: { userId },
+        completedAt: { gte: startOfWeek },
+        status: "COMPLETED",
+      },
+    });
+
+    const roadmapTasksLastWeek = await prisma.careerTask.count({
+      where: {
+        goal: { userId },
+        completedAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        status: "COMPLETED",
+      },
+    });
+
+    const averageRoadmapProgress =
+      careerGoalsWithProgress.length > 0
+        ? Math.round(
+            (careerGoalsWithProgress.reduce(
+              (sum, goal) => sum + goal.progress,
+              0,
+            ) /
+              careerGoalsWithProgress.length) *
+              100,
+          ) / 100
+        : 0;
+
+    const milestonesAchieved = await prisma.careerMilestone.count({
+      where: {
+        goal: { userId },
+        isAchieved: true,
+      },
+    });
+
+    
+    // 4. RESUME ANALYTICS
+    
+    const [
+      totalResumes,
+      analyzedResumes,
+      resumesThisWeek,
+      resumesLastWeek,
+    ] = await Promise.all([
+      prisma.resume.count({ where: { userId } }),
+      prisma.resume.count({
+        where: { userId, status: "READY", analyzedAt: { not: null } },
+      }),
+      prisma.resume.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfWeek },
+        },
+      }),
+      prisma.resume.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+        },
+      }),
+    ]);
+
+    const resumeScoreStats = await prisma.resume.aggregate({
+      where: {
+        userId,
+        analysisScore: { not: null },
+      },
+      _avg: { analysisScore: true },
+      _max: { analysisScore: true },
+    });
+
+    const recentResumes = await prisma.resume.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+      take: 5,
+      select: {
+        id: true,
+        title: true,
+        filename: true,
+        analysisScore: true,
+        status: true,
+        analyzedAt: true,
+        createdAt: true,
+      },
+    });
+
+    
+    // 5. DOCUMENT ANALYTICS
+    
+    const [
+      totalDocuments,
+      processedDocuments,
+      documentsThisWeek,
+      documentsLastWeek,
+    ] = await Promise.all([
+      prisma.document.count({
+        where: {
+          userId,
+          resume: null, // Exclude resumes
+        },
+      }),
+      prisma.document.count({
+        where: {
+          userId,
+          status: DocumentStatus.READY,
+          resume: null,
+        },
+      }),
+      prisma.document.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfWeek },
+          resume: null,
+        },
+      }),
+      prisma.document.count({
+        where: {
+          userId,
+          createdAt: { gte: startOfLastWeek, lt: endOfLastWeek },
+          resume: null,
+        },
+      }),
+    ]);
+
+    
+    // 6. OVERALL SUMMARY
+    
+    const overallLearningActivity =
+      thisWeekAttempts +
+      interviewSessionsThisWeek +
+      roadmapTasksThisWeek +
+      resumesThisWeek +
+      documentsThisWeek;
+
+    const lastWeekLearningActivity =
+      lastWeekAttempts +
+      interviewSessionsLastWeek +
+      roadmapTasksLastWeek +
+      resumesLastWeek +
+      documentsLastWeek;
+
     return res.json({
       analytics: {
+        // Overall Summary
         overview: {
-          totalTopics,
+          overallProgress: Math.round(
+            (overallProgress + averageRoadmapProgress) / 2,
+          ),
+          overallLearningActivity: {
+            thisWeek: overallLearningActivity,
+            lastWeek: lastWeekLearningActivity,
+            change: overallLearningActivity - lastWeekLearningActivity,
+          },
+        },
+
+        // Feature Breakdown
+        quizzes: {
           totalQuizzes,
           totalAttempts,
+          totalTopics,
           totalQuestions,
-          overallProgress,
-        },
-        weeklyComparison: {
-          attempts: {
-            thisWeek: thisWeekAttempts,
-            lastWeek: lastWeekAttempts,
-            change: thisWeekAttempts - lastWeekAttempts,
-          },
-          topics: {
-            thisWeek: thisWeekTopics,
-            lastWeek: lastWeekTopics,
-            change: thisWeekTopics - lastWeekTopics,
-          },
-          progress: {
-            thisWeek: thisWeekProgress,
-            lastWeek: lastWeekProgress,
-            change: progressChange,
-          },
-        },
-        performance: {
           averageScore: overallProgress,
           bestScore: bestScore
             ? {
@@ -718,52 +961,164 @@ export const getUserStats = async (
                 completedAt: worstScore.completedAt,
               }
             : null,
-          timeSeries: {
-            last7Days: performance7Days,
-            last30Days: performance30Days,
-            last90Days: performance90Days,
+          weeklyComparison: {
+            attempts: {
+              thisWeek: thisWeekAttempts,
+              lastWeek: lastWeekAttempts,
+              change: thisWeekAttempts - lastWeekAttempts,
+            },
+            topics: {
+              thisWeek: thisWeekTopics,
+              lastWeek: lastWeekTopics,
+              change: thisWeekTopics - lastWeekTopics,
+            },
+            progress: {
+              thisWeek: thisWeekProgress,
+              lastWeek: lastWeekProgress,
+              change: progressChange,
+            },
+          },
+          time: {
+            totalTimeSpent: totalTimeSpent._sum.timeSpent || 0,
+            averageTimeSpent:
+              Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100,
+            totalTimeSet: totalTimeSet._sum.timer || 0,
+            averageTimeSet:
+              Math.round((averageTimeSet._avg.timer || 0) * 100) / 100,
+            timeEfficiency: timeEfficiency
+              ? Math.round(timeEfficiency * 100) / 100
+              : null,
+          },
+          performance: {
+            timeSeries: {
+              last7Days: performance7Days,
+              last30Days: performance30Days,
+              last90Days: performance90Days,
+            },
+          },
+          topics: topicsProgress,
+          attemptsByQuiz: attemptsWithDetails,
+        },
+
+        interviewPrep: {
+          totalSessions: totalInterviewSessions,
+          completedSessions: completedInterviewSessions,
+          averageScore:
+            Math.round((interviewScoreStats._avg.overallScore || 0) * 100) /
+            100,
+          bestScore: interviewScoreStats._max.overallScore
+            ? Math.round(interviewScoreStats._max.overallScore * 100) / 100
+            : null,
+          sessionsByLevel: interviewSessionsByLevel.map((item) => ({
+            level: item.level,
+            count: item._count.id,
+          })),
+          weeklyComparison: {
+            thisWeek: interviewSessionsThisWeek,
+            lastWeek: interviewSessionsLastWeek,
+            change:
+              interviewSessionsThisWeek - interviewSessionsLastWeek,
           },
         },
-        time: {
-          totalTimeSpent: totalTimeSpent._sum.timeSpent || 0,
-          averageTimeSpent:
-            Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100,
-          totalTimeSet: totalTimeSet._sum.timer || 0,
-          averageTimeSet:
-            Math.round((averageTimeSet._avg.timer || 0) * 100) / 100,
-          timeEfficiency: timeEfficiency
-            ? Math.round(timeEfficiency * 100) / 100
-            : null,
+
+        careerRoadmaps: {
+          totalGoals: totalCareerGoals,
+          activeGoals: activeCareerGoals,
+          completedGoals: completedCareerGoals,
+          averageProgress: averageRoadmapProgress,
+          totalTasks: totalRoadmapTasks,
+          completedTasks: completedRoadmapTasks,
+          milestonesAchieved,
+          weeklyComparison: {
+            goals: {
+              thisWeek: careerGoalsThisWeek,
+              lastWeek: careerGoalsLastWeek,
+              change: careerGoalsThisWeek - careerGoalsLastWeek,
+            },
+            tasks: {
+              thisWeek: roadmapTasksThisWeek,
+              lastWeek: roadmapTasksLastWeek,
+              change: roadmapTasksThisWeek - roadmapTasksLastWeek,
+            },
+          },
         },
-        topics: topicsProgress,
-        attemptsByQuiz: attemptsWithDetails,
-        recentAttempts: recentAttempts.map(
-          (attempt: {
-            id: string;
-            quiz: {
+
+        resumes: {
+          totalResumes,
+          analyzedResumes,
+          averageScore:
+            Math.round((resumeScoreStats._avg.analysisScore || 0) * 100) / 100,
+          bestScore: resumeScoreStats._max.analysisScore
+            ? Math.round(resumeScoreStats._max.analysisScore * 100) / 100
+            : null,
+          weeklyComparison: {
+            thisWeek: resumesThisWeek,
+            lastWeek: resumesLastWeek,
+            change: resumesThisWeek - resumesLastWeek,
+          },
+        },
+
+        documents: {
+          totalDocuments,
+          processedDocuments,
+          weeklyComparison: {
+            thisWeek: documentsThisWeek,
+            lastWeek: documentsLastWeek,
+            change: documentsThisWeek - documentsLastWeek,
+          },
+        },
+
+        // Recent Activity (all features combined)
+        recentActivity: {
+          quizAttempts: recentAttempts.map(
+            (attempt: {
               id: string;
-              title: string;
-              difficulty: Difficulty;
-              topic: { name: string } | null;
-            };
-            score: number | null;
-            correctCount: number | null;
-            totalQuestions: number;
-            timeSpent: number | null;
-            completedAt: Date | null;
-          }) => ({
-            id: attempt.id,
-            quizId: attempt.quiz.id,
-            quizTitle: attempt.quiz.title,
-            quizDifficulty: attempt.quiz.difficulty,
-            topicName: attempt.quiz.topic?.name || null,
-            score: attempt.score,
-            correctCount: attempt.correctCount,
-            totalQuestions: attempt.totalQuestions,
-            timeSpent: attempt.timeSpent,
-            completedAt: attempt.completedAt,
-          }),
-        ),
+              quiz: {
+                id: string;
+                title: string;
+                difficulty: Difficulty;
+                topic: { name: string } | null;
+              };
+              score: number | null;
+              correctCount: number | null;
+              totalQuestions: number;
+              timeSpent: number | null;
+              completedAt: Date | null;
+            }) => ({
+              id: attempt.id,
+              type: "quiz",
+              quizId: attempt.quiz.id,
+              quizTitle: attempt.quiz.title,
+              quizDifficulty: attempt.quiz.difficulty,
+              topicName: attempt.quiz.topic?.name || null,
+              score: attempt.score,
+              correctCount: attempt.correctCount,
+              totalQuestions: attempt.totalQuestions,
+              timeSpent: attempt.timeSpent,
+              completedAt: attempt.completedAt,
+            }),
+          ),
+          interviewSessions: recentInterviewSessions.map((session) => ({
+            id: session.id,
+            type: "interview",
+            role: session.role,
+            level: session.level,
+            status: session.status,
+            score: session.overallScore,
+            completedAt: session.completedAt,
+            createdAt: session.createdAt,
+          })),
+          resumes: recentResumes.map((resume) => ({
+            id: resume.id,
+            type: "resume",
+            title: resume.title || resume.filename,
+            filename: resume.filename,
+            score: resume.analysisScore,
+            status: resume.status,
+            analyzedAt: resume.analyzedAt,
+            createdAt: resume.createdAt,
+          })),
+        },
       },
     });
   } catch (error: any) {
