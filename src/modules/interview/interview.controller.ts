@@ -123,6 +123,10 @@ export const createInterviewSession = async (
       },
     });
 
+    // Increment monthly interview session count
+    const { incrementInterviewSessionCount } = await import("../../utils/usage");
+    await incrementInterviewSessionCount(req.user.id);
+
     return res.status(201).json({
       message: "Interview session created",
       session,

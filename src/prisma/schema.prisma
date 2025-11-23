@@ -45,19 +45,21 @@ model Topic {
 }
 
 model Quiz {
-  id         String     @id @default(uuid())
-  title      String
-  type       QuizType
-  difficulty Difficulty
-  createdAt  DateTime   @default(now())
-  expiresAt  DateTime?
-  timer      Int? // in seconds
-  status     QuizStatus @default(PENDING)
-  count      Int
-  topic      Topic?     @relation(fields: [topicId], references: [id], onDelete: SetNull)
-  topicId    String?
-  document   Document?  @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  documentId String?
+  id           String       @id @default(uuid())
+  title        String
+  type         QuizType
+  difficulty   Difficulty
+  createdAt    DateTime     @default(now())
+  expiresAt    DateTime?
+  timer        Int? // in seconds
+  status       QuizStatus   @default(PENDING)
+  count        Int
+  topic        Topic?       @relation(fields: [topicId], references: [id], onDelete: SetNull)
+  topicId      String?
+  document     Document?    @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  documentId   String?
+  careerGoal   CareerGoal?  @relation(fields: [careerGoalId], references: [id], onDelete: SetNull)
+  careerGoalId String?
 
   user   User   @relation(fields: [userId], references: [id])
   userId String
@@ -194,10 +196,13 @@ model SubscriptionPlan {
   isActive        Boolean  @default(true)
   isCustom        Boolean  @default(false)
   // Limits
-  maxTopics       Int      @default(5)
-  maxQuizzes      Int      @default(10)
-  maxDocuments    Int      @default(0)
-  allowedModels   String[] // e.g., ["gpt-3.5-turbo", "gpt-4-turbo"]
+  maxTopics                  Int      @default(5)
+  maxQuizzes                 Int      @default(10)
+  maxDocuments               Int      @default(0)
+  maxCareerRoadmaps          Int      @default(1)
+  maxInterviewSessionsPerMonth Int    @default(3)
+  maxResumes                 Int      @default(2)
+  allowedModels              String[] // e.g., ["gpt-3.5-turbo", "gpt-4-turbo"]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -213,10 +218,13 @@ model UserSubscription {
   stripeSubscriptionId String? @unique
 
   // Current effective limits (can be overridden by admin)
-  maxTopics     Int
-  maxQuizzes    Int
-  maxDocuments  Int
-  allowedModels String[]
+  maxTopics                  Int      @default(5)
+  maxQuizzes                 Int      @default(10)
+  maxDocuments               Int      @default(0)
+  maxCareerRoadmaps          Int      @default(1)
+  maxInterviewSessionsPerMonth Int    @default(3)
+  maxResumes                 Int      @default(2)
+  allowedModels              String[]
 
   // Subscription status
   status             SubscriptionStatus @default(ACTIVE)
@@ -239,11 +247,15 @@ model UserUsage {
   id     String @id @default(uuid())
   userId String @unique
 
-  topicsCount    Int @default(0)
-  quizzesCount   Int @default(0)
-  documentsCount Int @default(0)
+  topicsCount              Int @default(0)
+  quizzesCount             Int @default(0)
+  documentsCount           Int @default(0)
+  careerRoadmapsCount      Int @default(0)
+  interviewSessionsThisMonth Int @default(0)
+  resumesCount             Int @default(0)
 
-  lastResetAt DateTime @default(now())
+  lastResetAt              DateTime @default(now())
+  lastMonthReset           DateTime @default(now()) // For monthly resets (interview sessions)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -515,9 +527,33 @@ model CareerGoal {
   tasks      CareerTask[]
   resources  CareerResource[]
   milestones CareerMilestone[]
+  quizzes    Quiz[]
+  quizSuggestions CareerQuizSuggestion[]
 
   @@index([userId])
   @@index([status])
+}
+
+model CareerQuizSuggestion {
+  id                String     @id @default(uuid())
+  goalId            String
+  skill              String
+  suggestedQuizTitle String
+  difficulty         Difficulty
+  reason             String     @db.Text
+  linkedTaskTitle    String?
+  linkedTaskId       String?
+  phase              Int?        // Phase this suggestion is for
+  isActive           Boolean     @default(true) // Mark inactive when quiz is created or suggestion is outdated
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  goal CareerGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+  @@index([isActive])
+  @@index([phase])
+  @@unique([goalId, suggestedQuizTitle]) // Prevent duplicate suggestions per goal
 }
 
 model CareerTask {

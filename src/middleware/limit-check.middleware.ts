@@ -153,6 +153,129 @@ export const checkModelAccess = (model: string) => {
   };
 };
 
+export const checkCareerRoadmapLimit = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    const subscription = await getUserSubscription(req.user.id);
+    if (!subscription) {
+      return res.status(403).json({
+        error: "No subscription found",
+        message: "Please contact support",
+      });
+    }
+
+    // Check if limit is -1 (unlimited) for Premium plan
+    if (subscription.maxCareerRoadmaps === -1) {
+      return next();
+    }
+
+    const usage = await getUserUsage(req.user.id);
+
+    if (usage.careerRoadmapsCount >= subscription.maxCareerRoadmaps) {
+      return res.status(403).json({
+        error: "Career roadmap limit exceeded",
+        limit: subscription.maxCareerRoadmaps,
+        current: usage.careerRoadmapsCount,
+        message: `You have reached your limit of ${subscription.maxCareerRoadmaps} active career roadmaps. Please complete or archive existing roadmaps, or upgrade your plan.`,
+      });
+    }
+
+    return next();
+  } catch (error: any) {
+    console.error("Career roadmap limit check error:", error);
+    return res.status(500).json({ error: "Failed to check career roadmap limit" });
+  }
+};
+
+export const checkInterviewSessionLimit = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    const subscription = await getUserSubscription(req.user.id);
+    if (!subscription) {
+      return res.status(403).json({
+        error: "No subscription found",
+        message: "Please contact support",
+      });
+    }
+
+    // Check if limit is -1 (unlimited) for Premium plan
+    if (subscription.maxInterviewSessionsPerMonth === -1) {
+      return next();
+    }
+
+    const usage = await getUserUsage(req.user.id);
+
+    if (usage.interviewSessionsThisMonth >= subscription.maxInterviewSessionsPerMonth) {
+      return res.status(403).json({
+        error: "Interview session limit exceeded",
+        limit: subscription.maxInterviewSessionsPerMonth,
+        current: usage.interviewSessionsThisMonth,
+        message: `You have reached your monthly limit of ${subscription.maxInterviewSessionsPerMonth} interview sessions. The limit will reset next month, or upgrade your plan for more sessions.`,
+      });
+    }
+
+    return next();
+  } catch (error: any) {
+    console.error("Interview session limit check error:", error);
+    return res.status(500).json({ error: "Failed to check interview session limit" });
+  }
+};
+
+export const checkResumeLimit = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    const subscription = await getUserSubscription(req.user.id);
+    if (!subscription) {
+      return res.status(403).json({
+        error: "No subscription found",
+        message: "Please contact support",
+      });
+    }
+
+    // Check if limit is -1 (unlimited) for Premium plan
+    if (subscription.maxResumes === -1) {
+      return next();
+    }
+
+    const usage = await getUserUsage(req.user.id);
+
+    if (usage.resumesCount >= subscription.maxResumes) {
+      return res.status(403).json({
+        error: "Resume limit exceeded",
+        limit: subscription.maxResumes,
+        current: usage.resumesCount,
+        message: `You have reached your limit of ${subscription.maxResumes} resumes. Please delete existing resumes or upgrade your plan.`,
+      });
+    }
+
+    return next();
+  } catch (error: any) {
+    console.error("Resume limit check error:", error);
+    return res.status(500).json({ error: "Failed to check resume limit" });
+  }
+};
+
 export const validateModelFromBody = async (
   req: AuthenticatedRequest,
   res: Response,

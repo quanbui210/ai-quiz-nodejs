@@ -27,6 +27,15 @@ export interface ResumeAnalysisInput {
   yearsOfExperience?: number;
 }
 
+export interface SectionRecommendation {
+  section: string; // e.g., "Overview", "Experience", "Projects", "Skills"
+  currentContent?: string; // What's currently there (if applicable)
+  issue: string; // What's wrong or missing
+  recommendation: string; // What to change it to
+  example?: string; // Example of improved version
+  priority: "HIGH" | "MEDIUM" | "LOW";
+}
+
 export interface ResumeAnalysis {
   score: number; // 0-100
   strengths: string[];
@@ -37,6 +46,7 @@ export interface ResumeAnalysis {
     keywords: string[];
     atsOptimization: string[];
   };
+  sectionRecommendations: SectionRecommendation[]; // NEW: Section-by-section specific recommendations
   summary: string;
 }
 
@@ -50,7 +60,7 @@ export const analyzeResume = async (
   const completion = await openai.chat.completions.create({
     model: DEFAULT_RESUME_MODEL,
     temperature: 0.3,
-    max_tokens: 1200,
+    max_tokens: 3000, // Increased for detailed section recommendations
     response_format: { type: "json_object" },
     messages: [
       {
@@ -70,6 +80,16 @@ Analyze resumes and provide comprehensive feedback as JSON with this EXACT struc
     "keywords": ["keyword suggestion 1", ...],
     "atsOptimization": ["ATS suggestion 1", ...]
   },
+  "sectionRecommendations": [
+    {
+      "section": "Overview",
+      "currentContent": "Current text from this section (if applicable)",
+      "issue": "What's wrong or missing in this section",
+      "recommendation": "Specific recommendation for improvement",
+      "example": "Example of improved version (show before/after if helpful)",
+      "priority": "HIGH" | "MEDIUM" | "LOW"
+    }
+  ],
   "summary": "Brief overall assessment (2-3 sentences)"
 }
 
@@ -149,11 +169,57 @@ SCORING GUIDELINES (Be strict and fair):
   - Missing essential information
   - Would not pass initial screening
 
+SECTION-BY-SECTION RECOMMENDATIONS (CRITICAL):
+For each major section (Overview, Experience, Projects, Skills, Education), provide specific recommendations:
+
+1. **Identify the section** (e.g., "Overview", "Experience - Job Title at Company", "Projects - Project Name")
+2. **Quote current content** (if applicable) - show what's currently there
+3. **Identify the issue** - what's wrong, vague, or missing
+4. **Provide specific recommendation** - exactly what to change
+5. **Give an example** - show improved version with before/after if helpful
+6. **Set priority** - HIGH (critical issues), MEDIUM (important improvements), LOW (nice-to-have)
+
+EXAMPLES OF GOOD SECTION RECOMMENDATIONS:
+
+Example 1 - Overview Section:
+{
+  "section": "Overview",
+  "currentContent": "Experienced software developer with knowledge of various technologies.",
+  "issue": "Too vague, doesn't specify technologies, years of experience, or value proposition",
+  "recommendation": "Replace with specific statement: 'Full-stack developer with 5 years of experience building scalable web applications. Specialized in React, Node.js, and cloud technologies. Proven track record of improving application performance and leading technical initiatives.'",
+  "example": "BEFORE: 'Experienced software developer with knowledge of various technologies.'\nAFTER: 'Full-stack developer with 5 years of experience building scalable web applications using React, Node.js, and AWS. Led development of payment systems handling 100K+ transactions daily, improving performance by 40% through database optimization.'",
+  "priority": "HIGH"
+}
+
+Example 2 - Experience Section:
+{
+  "section": "Experience - Software Engineer at Company X",
+  "currentContent": "Worked on improving application performance and adding new features.",
+  "issue": "Vague, no metrics, doesn't show impact or specific technologies used",
+  "recommendation": "Add specific metrics and technologies: 'Optimized database queries and implemented caching strategies, reducing API response time by 40% (from 500ms to 300ms). Built payment integration feature using Stripe API, processing 10K+ transactions monthly. Tech stack: React, Node.js, PostgreSQL, Redis.'",
+  "example": "BEFORE: 'Worked on improving application performance and adding new features.'\nAFTER: '• Optimized database queries and implemented Redis caching, reducing API response time by 40% (500ms → 300ms)\n• Built Stripe payment integration processing 10K+ monthly transactions\n• Tech: React, Node.js, PostgreSQL, Redis'",
+  "priority": "HIGH"
+}
+
+Example 3 - Projects Section:
+{
+  "section": "Projects - E-commerce Platform",
+  "currentContent": "Built an e-commerce website with shopping cart functionality.",
+  "issue": "Too generic, doesn't show tech stack, complexity, or your specific contributions",
+  "recommendation": "Add tech stack, specific features, and your role: 'Full-stack e-commerce platform with React frontend and Node.js backend. Features: user authentication, payment processing (Stripe), inventory management, order tracking. Deployed on AWS with Docker. GitHub: [link]'",
+  "example": "BEFORE: 'Built an e-commerce website with shopping cart functionality.'\nAFTER: 'E-commerce Platform | React, Node.js, PostgreSQL, Stripe\n• Implemented user authentication with JWT and OAuth\n• Built payment processing handling 1K+ transactions\n• Designed RESTful APIs with 200ms average response time\n• GitHub: github.com/username/project'",
+  "priority": "MEDIUM"
+}
+
 IMPORTANT INSTRUCTIONS:
 - Be CRITICAL but CONSTRUCTIVE - point out real issues
 - Compare against industry standards for the experience level
 - Don't inflate scores - be honest about weaknesses
-- Provide SPECIFIC, ACTIONABLE feedback
+- Provide SPECIFIC, ACTIONABLE feedback with EXAMPLES
+- For sectionRecommendations: Focus on 5-8 most critical sections
+- Include actual quotes from resume when providing recommendations
+- Show before/after examples when helpful
+- Prioritize sections that have the biggest impact on hiring decisions
 - Consider the competitive tech job market
 - Look for red flags (gaps, inconsistencies, vague claims)
 - Reward resumes that show real impact and technical depth
@@ -181,6 +247,14 @@ Respond ONLY with valid JSON matching this structure.`,
       keywords: string[];
       atsOptimization: string[];
     };
+    sectionRecommendations?: Array<{
+      section: string;
+      currentContent?: string;
+      issue: string;
+      recommendation: string;
+      example?: string;
+      priority: "HIGH" | "MEDIUM" | "LOW";
+    }>;
     summary: string;
   };
 
@@ -194,10 +268,8 @@ Respond ONLY with valid JSON matching this structure.`,
     );
   }
 
-  // Validate and normalize score
   const score = Math.min(Math.max(parsed.score ?? 50, 0), 100);
 
-  // Ensure all arrays exist
   const strengths = Array.isArray(parsed.strengths) ? parsed.strengths : [];
   const weaknesses = Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [];
   const suggestions = parsed.suggestions || {
@@ -206,6 +278,34 @@ Respond ONLY with valid JSON matching this structure.`,
     keywords: [],
     atsOptimization: [],
   };
+
+  // Process section recommendations
+  const sectionRecommendations = Array.isArray(parsed.sectionRecommendations)
+    ? parsed.sectionRecommendations
+        .filter((rec) => {
+          // Validate structure
+          return (
+            rec &&
+            typeof rec.section === "string" &&
+            typeof rec.issue === "string" &&
+            typeof rec.recommendation === "string" &&
+            ["HIGH", "MEDIUM", "LOW"].includes(rec.priority)
+          );
+        })
+        .map((rec) => ({
+          section: rec.section.trim(),
+          currentContent: rec.currentContent?.trim() || undefined,
+          issue: rec.issue.trim(),
+          recommendation: rec.recommendation.trim(),
+          example: rec.example?.trim() || undefined,
+          priority: rec.priority,
+        }))
+        // Sort by priority (HIGH first)
+        .sort((a, b) => {
+          const priorityOrder = { HIGH: 3, MEDIUM: 2, LOW: 1 };
+          return (priorityOrder[b.priority] || 0) - (priorityOrder[a.priority] || 0);
+        })
+    : [];
 
   return {
     score,
@@ -221,6 +321,7 @@ Respond ONLY with valid JSON matching this structure.`,
         ? suggestions.atsOptimization
         : [],
     },
+    sectionRecommendations,
     summary: parsed.summary || "Resume analysis completed",
   };
 };

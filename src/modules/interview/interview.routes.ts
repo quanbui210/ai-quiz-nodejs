@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
+import { checkInterviewSessionLimit } from "../../middleware/limit-check.middleware";
 import {
   addInterviewNote,
   completeInterviewSession,
@@ -15,7 +16,7 @@ import {
 
 const router = Router();
 
-router.post("/sessions", authenticate, createInterviewSession);
+router.post("/sessions", authenticate, checkInterviewSessionLimit, createInterviewSession);
 router.get("/sessions", authenticate, listInterviewSessions);
 router.get("/sessions/:sessionId", authenticate, getInterviewSession);
 router.post(

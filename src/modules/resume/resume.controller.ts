@@ -73,6 +73,10 @@ export const uploadResume = async (
       },
     });
 
+    // Increment usage count
+    const { incrementResumeCount } = await import("../../utils/usage");
+    await incrementResumeCount(req.user.id);
+
     processResumeAsync(resume.id, document.id, storagePath, file.mimetype).catch(
       (error) => {
         console.error(`Failed to process resume ${resume.id}:`, error);
@@ -127,7 +131,6 @@ async function processResumeAsync(
       where: { id: resumeId },
       data: {
         parsedText: extractedText.text || null,
-        // Keep status as PROCESSING until analysis completes
         status: extractedText.text ? "PROCESSING" : "READY",
       },
     });
@@ -137,8 +140,6 @@ async function processResumeAsync(
       data: { status: "READY" },
     });
 
-    // IMPORTANT: Wait for analysis to complete before marking resume as READY
-    // This ensures analysis fields are populated when status becomes READY
     if (extractedText.text) {
       console.log(`[Resume Processing] Starting analysis for ${resumeId}...`);
       try {
@@ -149,11 +150,9 @@ async function processResumeAsync(
           where: { id: resumeId },
           data: { status: "READY" },
         });
-        console.log(`[Resume Processing] ✅ Resume ${resumeId} complete - text extracted and analyzed`);
+        console.log(`[Resume Processing]  Resume ${resumeId} complete - text extracted and analyzed`);
       } catch (error: any) {
-        console.error(`[Resume Processing] ❌ Analysis failed for ${resumeId}:`, error);
-        // Even if analysis fails, mark as READY so user can still use the resume
-        // But analysis fields will be null
+        console.error(`[Resume Processing]  Analysis failed for ${resumeId}:`, error);
         await prisma.resume.update({
           where: { id: resumeId },
           data: { status: "READY" },
@@ -174,7 +173,6 @@ async function processResumeAsync(
 
 async function analyzeResumeAsync(resumeId: string, resumeText: string) {
   try {
-    console.log(`[Resume Analysis] Starting for resume ${resumeId}...`);
     
     const resume = await prisma.resume.findUnique({
       where: { id: resumeId },
@@ -190,7 +188,6 @@ async function analyzeResumeAsync(resumeId: string, resumeText: string) {
       return;
     }
 
-    console.log(`[Resume Analysis] Calling AI service with ${resumeText.length} characters...`);
     const analysis = await analyzeResume({
       resumeText,
     });
@@ -203,14 +200,16 @@ async function analyzeResumeAsync(resumeId: string, resumeText: string) {
         analysisScore: analysis.score,
         analysisStrengths: analysis.strengths,
         analysisWeaknesses: analysis.weaknesses,
-        analysisSuggestions: analysis.suggestions as Prisma.InputJsonValue,
+        analysisSuggestions: {
+          ...analysis.suggestions,
+          sectionRecommendations: analysis.sectionRecommendations || [],
+        } as unknown as Prisma.InputJsonValue,
         analyzedAt: new Date(),
       },
     });
 
-    console.log(`[Resume Analysis] ✅ Resume ${resumeId} analyzed successfully. Score: ${analysis.score}`);
+    console.log(`[Resume Analysis] Resume ${resumeId} analyzed successfully. Score: ${analysis.score}`);
   } catch (error: any) {
-    console.error(`[Resume Analysis] ❌ Error analyzing resume ${resumeId}:`, error);
     console.error(`[Resume Analysis] Error details:`, error.message, error.stack);
 
   }
@@ -230,7 +229,6 @@ export const listResumes = async (req: AuthenticatedRequest, res: Response) => {
         title: true,
         filename: true,
         status: true,
-        // Analysis fields (summary only for list view)
         analysisScore: true,
         analyzedAt: true,
         createdAt: true,
@@ -339,6 +337,10 @@ export const deleteResume = async (
     await prisma.resume.delete({
       where: { id: resume.id },
     });
+
+    // Decrement usage count
+    const { decrementResumeCount } = await import("../../utils/usage");
+    await decrementResumeCount(req.user.id);
 
     return res.json({ message: "Resume deleted successfully" });
   } catch (error: any) {

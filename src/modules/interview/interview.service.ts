@@ -308,11 +308,9 @@ IMPORTANT:
     );
   }
 
-  // Ensure all arrays exist and have content
   const recommendations = parsed.recommendations || [];
   if (recommendations.length === 0) {
     console.warn("No recommendations generated, creating default recommendations");
-    // Fallback recommendations if AI doesn't provide any
     recommendations.push(
       "Review the questions you struggled with and research those topics",
       "Practice explaining technical concepts clearly and concisely",

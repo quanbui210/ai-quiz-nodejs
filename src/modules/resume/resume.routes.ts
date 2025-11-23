@@ -10,6 +10,7 @@ import {
   uploadResume,
 } from "./resume.controller";
 import { authenticate } from "../../middleware/auth.middleware";
+import { checkResumeLimit } from "../../middleware/limit-check.middleware";
 
 const router = Router();
 
@@ -56,7 +57,7 @@ const upload = multer({
   },
 });
 
-router.post("/upload", authenticate, upload.single("file"), uploadResume);
+router.post("/upload", authenticate, checkResumeLimit, upload.single("file"), uploadResume);
 router.get("/", authenticate, listResumes);
 router.get("/:resumeId/preview", authenticate, getResumePreview);
 router.post("/:resumeId/analyze", authenticate, analyzeResumeManually);

@@ -1,7 +1,9 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
+import { checkCareerRoadmapLimit } from "../../middleware/limit-check.middleware";
 import {
   createCareerGoal,
+  createQuizFromRecommendation,
   deleteCareerGoal,
   exportCareerRoadmapPDF,
   getCareerGoal,
@@ -13,7 +15,7 @@ import {
 
 const router = Router();
 
-router.post("/goals", authenticate, createCareerGoal);
+router.post("/goals", authenticate, checkCareerRoadmapLimit, createCareerGoal);
 router.get("/goals", authenticate, listCareerGoals);
 router.get("/goals/:goalId", authenticate, getCareerGoal);
 router.patch(
@@ -30,6 +32,11 @@ router.get(
   "/goals/:goalId/quiz-suggestions",
   authenticate,
   suggestCareerQuizTopics,
+);
+router.post(
+  "/goals/:goalId/quizzes",
+  authenticate,
+  createQuizFromRecommendation,
 );
 router.get(
   "/goals/:goalId/export",

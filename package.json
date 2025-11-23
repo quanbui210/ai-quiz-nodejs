@@ -19,6 +19,7 @@
     "prisma:migrate": "npx prisma migrate dev --schema=./src/prisma/schema.prisma",
     "prisma:migrate:deploy": "npx prisma migrate deploy --schema=./src/prisma/schema.prisma",
     "prisma:push": "npx prisma db push --schema=./src/prisma/schema.prisma",
+     "prisma:push:production": "npx prisma db push --schema=./src/prisma/schema.prisma --skip-generate --accept-data-loss",
     "fix:attempts": "ts-node scripts/fix-existing-attempts.ts",
     "seed:plans": "ts-node scripts/seed-default-plans.ts",
     "seed:admin": "ts-node scripts/seed-admin-user.ts",
