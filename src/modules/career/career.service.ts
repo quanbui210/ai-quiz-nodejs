@@ -354,6 +354,12 @@ export interface RoadmapTask {
   estimatedHours?: number;
   dueInWeeks?: number;
   resources?: RoadmapResource[];
+  subtopics?: string[]; // Detailed list of things to learn/cover
+  suggestedProjects?: Array<{
+    title: string;
+    description: string;
+    difficulty?: "BEGINNER" | "INTERMEDIATE" | "ADVANCED";
+  }>; // Suggested practical projects
 }
 
 export interface RoadmapPhase {
@@ -433,6 +439,14 @@ Generate a structured learning plan as JSON with this exact structure:
           "type": "LEARNING" | "PROJECT" | "PRACTICE" | "INTERVIEW_PREP" | "CERTIFICATION" | "NETWORKING",
           "estimatedHours": number,
           "dueInWeeks": number,
+          "subtopics": ["Specific topic 1", "Specific topic 2", "Specific topic 3"],
+          "suggestedProjects": [
+            {
+              "title": "Project title",
+              "description": "What to build and why it's useful",
+              "difficulty": "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+            }
+          ],
           "resources": [
             {
               "title": "Resource title",
@@ -463,6 +477,25 @@ CRITICAL RULES FOR RESOURCES:
 6. For documentation, use official documentation URLs (e.g., docs.python.org, react.dev, nodejs.org/docs)
 7. If no real URL exists, leave it empty - it's better to have no URL than a fake one
 8. It's good to list course from Coursera, Udemy, freeCodeCamp, official docs like MDN, React docs, etc.
+
+DETAILED TASK BREAKDOWN:
+- For each task, provide "subtopics": an array of 5-10 specific, actionable learning points
+  * For LEARNING tasks: List specific concepts, modules, features, or topics to cover
+    Example: For "Learn Node.js Basics" → ["Event Loop and Asynchronous Programming", "Core Modules (fs, http, path, os)", "NPM and Package Management", "CommonJS vs ES Modules", "Error Handling and Debugging", "File System Operations", "HTTP Server Creation", "Streams and Buffers"]
+  * For PROJECT tasks: List specific features, components, or deliverables
+    Example: For "Build RESTful API" → ["Design API endpoints", "Implement CRUD operations", "Add authentication middleware", "Error handling", "Input validation", "Database integration", "API documentation"]
+  * For other task types: List relevant subtopics based on the task type
+
+- For each task, provide "suggestedProjects": an array of 1-3 practical project suggestions
+  * For TECHNICAL tasks: Suggest real-world practical projects or tasks that apply the learning
+    Example: For "Learn Node.js Basics" → [{"title": "CLI File Organizer", "description": "Build a command-line tool that organizes files by type into folders", "difficulty": "BEGINNER"}]
+  * For NON-TECHNICAL tasks: Suggest industry-relevant activities
+    Example: For "Networking" → [{"title": "Attend 3 Industry Meetups", "description": "Join local tech meetups and connect with professionals in your target role", "difficulty": "BEGINNER"}]
+  * Projects should be:
+    - Practical and applicable to the target role
+    - Appropriate difficulty level for the phase
+    - Buildable/achievable within the task timeframe
+    - Relevant to the industry/role
 
 RESUME-BASED ROADMAP:
 - If resume text is provided, use it to understand the user's actual experience, projects, and achievements

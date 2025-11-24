@@ -56,6 +56,7 @@ export interface EvaluatedAnswer {
   weaknesses: string[];
   suggestions: string[];
   improvementTips?: string;
+  exampleAnswer?: string; // Example answer tailored to the user's response
   starFormatScore?: {
     situation: number;
     task: number;
@@ -108,7 +109,7 @@ IMPORTANT:
   const completion = await openai.chat.completions.create({
     model: DEFAULT_INTERVIEW_MODEL,
     temperature: 0.6,
-    max_tokens: 500,
+    max_tokens: 1000, // Increased to accommodate example answers
     response_format: { type: "json_object" },
     messages,
   });
@@ -179,8 +180,32 @@ export const evaluateInterviewAnswer = async (
   const messages = [
     {
       role: "system" as const,
-      content:
-        "You are an interview coach. Score the answer from 1-10, highlighting strengths, weaknesses, and actionable suggestions. Respond ONLY with JSON.",
+      content: `You are an interview coach. Evaluate the user's answer and provide comprehensive feedback. Respond with JSON in this EXACT structure:
+{
+  "score": number (1-10),
+  "strengths": ["strength1", "strength2"],
+  "weaknesses": ["weakness1", "weakness2"],
+  "suggestions": ["suggestion1", "suggestion2"],
+  "improvementTips": "Detailed tips for improvement (optional)",
+  "exampleAnswer": "A well-structured example answer (2-4 paragraphs) that demonstrates how to answer this question effectively. This should be tailored to the user's answer - highlight what they did well and show what they could improve. Use their answer as context but provide a more complete/ideal response.",
+  "starFormatScore": {
+    "situation": number (1-5),
+    "task": number (1-5),
+    "action": number (1-5),
+    "result": number (1-5)
+  }
+}
+
+IMPORTANT:
+- The "exampleAnswer" should be a realistic, well-structured answer (2-4 paragraphs) that:
+  * Builds upon what the user said (acknowledge their good points)
+  * Shows what they could add or improve
+  * Demonstrates the expected depth and detail level for the role/level
+  * Uses good structure (e.g., STAR method for behavioral questions)
+  * Includes specific examples and technical details where appropriate
+  * Serves as a learning tool to help them understand what a strong answer looks like
+- Score should be fair and constructive
+- Provide actionable, specific feedback`,
     },
     {
       role: "user" as const,
@@ -198,7 +223,7 @@ export const evaluateInterviewAnswer = async (
   const completion = await openai.chat.completions.create({
     model: DEFAULT_INTERVIEW_MODEL,
     temperature: 0.5,
-    max_tokens: 500,
+    max_tokens: 1200, // Increased to accommodate example answers
     response_format: { type: "json_object" },
     messages,
   });
@@ -209,6 +234,7 @@ export const evaluateInterviewAnswer = async (
     weaknesses: string[];
     suggestions: string[];
     improvementTips?: string;
+    exampleAnswer?: string;
     starFormatScore?: {
       situation: number;
       task: number;
@@ -231,6 +257,7 @@ export const evaluateInterviewAnswer = async (
     weaknesses: parsed.weaknesses || [],
     suggestions: parsed.suggestions || [],
     improvementTips: parsed.improvementTips,
+    exampleAnswer: parsed.exampleAnswer?.trim(),
     starFormatScore: parsed.starFormatScore,
   };
 };

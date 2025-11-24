@@ -395,8 +395,9 @@ export const submitInterviewAnswer = async (
       data: {
         aiScore: evaluation.score,
         improvementTips: evaluation.improvementTips,
+        exampleAnswer: evaluation.exampleAnswer || null,
         starFormatScore: evaluation.starFormatScore || undefined,
-      },
+      } as any, // Type assertion needed until Prisma Client is fully regenerated
     });
 
     await prisma.interviewQuestion.update({

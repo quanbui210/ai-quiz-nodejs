@@ -162,6 +162,12 @@ const persistRoadmapArtifacts = async ({
         type?: string;
         estimatedHours?: number;
         dueInWeeks?: number;
+        subtopics?: string[];
+        suggestedProjects?: Array<{
+          title: string;
+          description: string;
+          difficulty?: string;
+        }>;
         resources?: Array<{
           title: string;
           url?: string;
@@ -199,7 +205,13 @@ const persistRoadmapArtifacts = async ({
               typeof task.dueInWeeks === "number"
                 ? addDays(startedAt, task.dueInWeeks * 7)
                 : null,
-          },
+            subtopics: task.subtopics && task.subtopics.length > 0 
+              ? (task.subtopics as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+            suggestedProjects: task.suggestedProjects && task.suggestedProjects.length > 0
+              ? (task.suggestedProjects as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
+          } as any, // Type assertion needed until Prisma Client is regenerated
         });
         taskOrder += 1;
 

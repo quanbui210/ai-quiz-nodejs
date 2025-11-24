@@ -284,6 +284,7 @@ model Document {
   status     DocumentStatus @default(UPLOADING)
   vectorized Boolean        @default(false)
   chunkCount Int            @default(0)
+  errorMessage String?      // Error message if processing failed
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -461,6 +462,7 @@ model InterviewAnswer {
   userAnswer      String   @db.Text
   aiScore         Float?
   improvementTips String?  @db.Text
+  exampleAnswer   String?  @db.Text // Example answer provided after user submits, tailored to their response
   starFormatScore Json?
   answeredAt      DateTime @default(now())
 
@@ -569,6 +571,8 @@ model CareerTask {
   order          Int        @default(0)
   estimatedHours Int?
   dependencies   String[]
+  subtopics      Json?      // Detailed list of things to learn/cover (array of strings)
+  suggestedProjects Json?  // Suggested practical projects (array of {title, description, difficulty})
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
 

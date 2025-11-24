@@ -145,6 +145,34 @@ function formatStripePrice(price: Stripe.Price): string {
   return `${formattedAmount} per ${intervalText}`;
 }
 
+export const syncMySubscription = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "User not authenticated" });
+    }
+
+    const subscription = await getUserSubscription(req.user.id);
+    if (!subscription) {
+      return res.status(404).json({ error: "Subscription not found" });
+    }
+
+    // Force sync from Stripe
+    await updateSubscriptionFromPlan(req.user.id, subscription.planId);
+
+    const updated = await getUserSubscription(req.user.id);
+    return res.json({
+      message: "Subscription synced from Stripe",
+      subscription: updated,
+    });
+  } catch (error: any) {
+    console.error("Sync subscription error:", error);
+    return res.status(500).json({ error: "Failed to sync subscription" });
+  }
+};
+
 export const getMySubscription = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -160,6 +188,106 @@ export const getMySubscription = async (
       subscription = await getOrCreateDefaultSubscription(req.user.id);
     }
 
+    let effectiveLimits = {
+      maxTopics: subscription.maxTopics,
+      maxQuizzes: subscription.maxQuizzes,
+      maxDocuments: subscription.maxDocuments,
+      maxCareerRoadmaps: subscription.maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth: subscription.maxInterviewSessionsPerMonth,
+      maxResumes: subscription.maxResumes,
+      allowedModels: subscription.allowedModels,
+    };
+
+    try {
+      const plan = subscription.plan;
+      if (plan.stripeProductId) {
+        const product = await stripe.products.retrieve(plan.stripeProductId);
+        if (product && !product.deleted && product.metadata) {
+          if (product.metadata.maxTopics)
+            effectiveLimits.maxTopics = parseInt(product.metadata.maxTopics, 10);
+          if (product.metadata.maxQuizzes)
+            effectiveLimits.maxQuizzes = parseInt(product.metadata.maxQuizzes, 10);
+          if (product.metadata.maxDocuments)
+            effectiveLimits.maxDocuments = parseInt(product.metadata.maxDocuments, 10);
+          if (product.metadata.maxCareerRoadmaps)
+            effectiveLimits.maxCareerRoadmaps = parseInt(product.metadata.maxCareerRoadmaps, 10);
+          if (product.metadata.maxInterviewSessionsPerMonth)
+            effectiveLimits.maxInterviewSessionsPerMonth = parseInt(product.metadata.maxInterviewSessionsPerMonth, 10);
+          if (product.metadata.maxResumes)
+            effectiveLimits.maxResumes = parseInt(product.metadata.maxResumes, 10);
+          if (product.metadata.allowedModels) {
+            try {
+              const parsed = JSON.parse(product.metadata.allowedModels);
+              effectiveLimits.allowedModels = Array.isArray(parsed) ? parsed : subscription.allowedModels;
+            } catch {
+              const models = product.metadata.allowedModels
+                .split(",")
+                .map((m: string) => m.trim());
+              effectiveLimits.allowedModels = models.length > 0 ? models : subscription.allowedModels;
+            }
+          }
+        }
+      } else if (plan.stripePriceId) {
+        const price = await stripe.prices.retrieve(plan.stripePriceId, {
+          expand: ["product"],
+        });
+        const productData = price.product;
+        if (productData && typeof productData !== "string" && !productData.deleted && productData.metadata) {
+          if (productData.metadata.maxTopics)
+            effectiveLimits.maxTopics = parseInt(productData.metadata.maxTopics, 10);
+          if (productData.metadata.maxQuizzes)
+            effectiveLimits.maxQuizzes = parseInt(productData.metadata.maxQuizzes, 10);
+          if (productData.metadata.maxDocuments)
+            effectiveLimits.maxDocuments = parseInt(productData.metadata.maxDocuments, 10);
+          if (productData.metadata.maxCareerRoadmaps)
+            effectiveLimits.maxCareerRoadmaps = parseInt(productData.metadata.maxCareerRoadmaps, 10);
+          if (productData.metadata.maxInterviewSessionsPerMonth)
+            effectiveLimits.maxInterviewSessionsPerMonth = parseInt(productData.metadata.maxInterviewSessionsPerMonth, 10);
+          if (productData.metadata.maxResumes)
+            effectiveLimits.maxResumes = parseInt(productData.metadata.maxResumes, 10);
+          if (productData.metadata.allowedModels) {
+            try {
+              const parsed = JSON.parse(productData.metadata.allowedModels);
+              effectiveLimits.allowedModels = Array.isArray(parsed) ? parsed : subscription.allowedModels;
+            } catch {
+              const models = productData.metadata.allowedModels
+                .split(",")
+                .map((m: string) => m.trim());
+              effectiveLimits.allowedModels = models.length > 0 ? models : subscription.allowedModels;
+            }
+          }
+        }
+      }
+    } catch (error: any) {
+      console.warn(`Failed to fetch Stripe metadata for subscription, using database values:`, error.message);
+    }
+
+    // Update database if Stripe values are different (sync)
+    const needsUpdate = 
+      subscription.maxTopics !== effectiveLimits.maxTopics ||
+      subscription.maxQuizzes !== effectiveLimits.maxQuizzes ||
+      subscription.maxDocuments !== effectiveLimits.maxDocuments ||
+      subscription.maxCareerRoadmaps !== effectiveLimits.maxCareerRoadmaps ||
+      subscription.maxInterviewSessionsPerMonth !== effectiveLimits.maxInterviewSessionsPerMonth ||
+      subscription.maxResumes !== effectiveLimits.maxResumes ||
+      JSON.stringify(subscription.allowedModels) !== JSON.stringify(effectiveLimits.allowedModels);
+
+    if (needsUpdate) {
+      subscription = await prisma.userSubscription.update({
+        where: { userId: req.user.id },
+        data: {
+          maxTopics: effectiveLimits.maxTopics,
+          maxQuizzes: effectiveLimits.maxQuizzes,
+          maxDocuments: effectiveLimits.maxDocuments,
+          maxCareerRoadmaps: effectiveLimits.maxCareerRoadmaps,
+          maxInterviewSessionsPerMonth: effectiveLimits.maxInterviewSessionsPerMonth,
+          maxResumes: effectiveLimits.maxResumes,
+          allowedModels: effectiveLimits.allowedModels,
+        },
+        include: { plan: true },
+      });
+    }
+
     const usage = await getUserUsage(req.user.id);
 
     return res.json({
@@ -171,12 +299,12 @@ export const getMySubscription = async (
         topicsCount: usage.topicsCount,
         quizzesCount: usage.quizzesCount,
         documentsCount: usage.documentsCount,
-        topicsRemaining: subscription.maxTopics === -1 ? -1 : subscription.maxTopics - usage.topicsCount,
-        quizzesRemaining: subscription.maxQuizzes === -1 ? -1 : subscription.maxQuizzes - usage.quizzesCount,
-        documentsRemaining: subscription.maxDocuments === -1 ? -1 : subscription.maxDocuments - usage.documentsCount,
-        careerRoadmapsRemaining: subscription.maxCareerRoadmaps === -1 ? -1 : subscription.maxCareerRoadmaps - usage.careerRoadmapsCount,
-        interviewSessionsRemaining: subscription.maxInterviewSessionsPerMonth === -1 ? -1 : subscription.maxInterviewSessionsPerMonth - usage.interviewSessionsThisMonth,
-        resumesRemaining: subscription.maxResumes === -1 ? -1 : subscription.maxResumes - usage.resumesCount,
+        topicsRemaining: effectiveLimits.maxTopics === -1 ? -1 : effectiveLimits.maxTopics - usage.topicsCount,
+        quizzesRemaining: effectiveLimits.maxQuizzes === -1 ? -1 : effectiveLimits.maxQuizzes - usage.quizzesCount,
+        documentsRemaining: effectiveLimits.maxDocuments === -1 ? -1 : effectiveLimits.maxDocuments - usage.documentsCount,
+        careerRoadmapsRemaining: effectiveLimits.maxCareerRoadmaps === -1 ? -1 : effectiveLimits.maxCareerRoadmaps - usage.careerRoadmapsCount,
+        interviewSessionsRemaining: effectiveLimits.maxInterviewSessionsPerMonth === -1 ? -1 : effectiveLimits.maxInterviewSessionsPerMonth - usage.interviewSessionsThisMonth,
+        resumesRemaining: effectiveLimits.maxResumes === -1 ? -1 : effectiveLimits.maxResumes - usage.resumesCount,
       },
     });
   } catch (error: any) {

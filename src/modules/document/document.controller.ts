@@ -91,10 +91,14 @@ export const uploadDocument = async (
     processDocumentAsync(document.id, storagePath, file.mimetype).catch(
       (error) => {
         console.error(`Failed to process document ${document.id}:`, error);
+        const errorMessage = error?.message || "Failed to process document. Please try uploading again.";
         prisma.document
           .update({
             where: { id: document.id },
-            data: { status: "FAILED" },
+            data: { 
+              status: "FAILED",
+              errorMessage: errorMessage,
+            },
           })
           .catch(console.error);
       },
@@ -186,9 +190,13 @@ async function processDocumentAsync(
     );
   } catch (error: any) {
     console.error(`Error processing document ${documentId}:`, error);
+    const errorMessage = error?.message || "Failed to process document. Please try uploading again.";
     await prisma.document.update({
       where: { id: documentId },
-      data: { status: "FAILED" },
+      data: { 
+        status: "FAILED",
+        errorMessage: errorMessage,
+      },
     });
     throw error;
   } finally {
@@ -214,7 +222,7 @@ export const listDocuments = async (
     const documents = await prisma.document.findMany({
       where: {
         userId: req.user.id,
-        resume: null, // Exclude documents that are linked to resumes
+        resume: null, 
       },
       orderBy: { createdAt: "desc" },
       select: {
@@ -225,6 +233,7 @@ export const listDocuments = async (
         status: true,
         vectorized: true,
         chunkCount: true,
+        errorMessage: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -237,10 +246,7 @@ export const listDocuments = async (
   }
 };
 
-/**
- * Get document details
- * GET /api/v1/documents/:id
- */
+
 export const getDocument = async (req: AuthenticatedRequest, res: Response) => {
   try {
     if (!req.user?.id) {
