@@ -21,6 +21,9 @@ export const getDashboard = async (
       plans,
       subscriptionByPlan,
       totalUsage,
+      totalCareerRoadmaps,
+      totalInterviewSessions,
+      totalResumes,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.userSubscription.count(),
@@ -44,8 +47,14 @@ export const getDashboard = async (
           topicsCount: true,
           quizzesCount: true,
           documentsCount: true,
+          careerRoadmapsCount: true,
+          interviewSessionsThisMonth: true,
+          resumesCount: true,
         },
       }),
+      prisma.careerGoal.count(),
+      prisma.interviewSession.count(),
+      prisma.resume.count(),
     ]);
 
     const planIds = subscriptionByPlan.map((s: { planId: string }) => s.planId);
@@ -172,6 +181,9 @@ export const getDashboard = async (
         maxTopics: sub.maxTopics,
         maxQuizzes: sub.maxQuizzes,
         maxDocuments: sub.maxDocuments,
+        maxCareerRoadmaps: sub.maxCareerRoadmaps,
+        maxInterviewSessionsPerMonth: sub.maxInterviewSessionsPerMonth,
+        maxResumes: sub.maxResumes,
         allowedModels: sub.allowedModels,
       },
       createdAt: sub.createdAt,
@@ -195,7 +207,13 @@ export const getDashboard = async (
           topics: totalUsage._sum.topicsCount || 0,
           quizzes: totalUsage._sum.quizzesCount || 0,
           documents: totalUsage._sum.documentsCount || 0,
+          careerRoadmaps: totalUsage._sum.careerRoadmapsCount || 0,
+          interviewSessions: totalUsage._sum.interviewSessionsThisMonth || 0,
+          resumes: totalUsage._sum.resumesCount || 0,
         },
+        totalCareerRoadmaps,
+        totalInterviewSessions,
+        totalResumes,
 
         revenue,
 
@@ -236,14 +254,65 @@ export const listUsers = async (req: AuthenticatedRequest, res: Response) => {
           },
           usage: true,
           adminProfile: true,
+          _count: {
+            select: {
+              topics: true,
+              quizzes: true,
+              documents: true,
+              careerGoals: true,
+              interviewSessions: true,
+              resumes: true,
+              attempts: true,
+            },
+          },
         },
         orderBy: { createdAt: "desc" },
       }),
       prisma.user.count({ where }),
     ]);
 
+    // Format users with activity summary
+    const formattedUsers = users.map((user: any) => ({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+      subscription: user.subscription
+        ? {
+            id: user.subscription.id,
+            plan: user.subscription.plan,
+            status: user.subscription.status,
+            limits: {
+              maxTopics: user.subscription.maxTopics,
+              maxQuizzes: user.subscription.maxQuizzes,
+              maxDocuments: user.subscription.maxDocuments,
+              maxCareerRoadmaps: user.subscription.maxCareerRoadmaps,
+              maxInterviewSessionsPerMonth: user.subscription.maxInterviewSessionsPerMonth,
+              maxResumes: user.subscription.maxResumes,
+            },
+          }
+        : null,
+      usage: user.usage,
+      activity: {
+        topics: user._count.topics,
+        quizzes: user._count.quizzes,
+        documents: user._count.documents,
+        careerRoadmaps: user._count.careerGoals,
+        interviewSessions: user._count.interviewSessions,
+        resumes: user._count.resumes,
+        quizAttempts: user._count.attempts,
+      },
+      isAdmin: !!user.adminProfile,
+      adminRole: user.adminProfile?.role || null,
+      isBanned: (user as any).isBanned || false,
+      bannedAt: (user as any).bannedAt,
+      banReason: (user as any).banReason,
+    }));
+
     return res.json({
-      users,
+      users: formattedUsers,
       pagination: {
         page,
         limit,
@@ -265,30 +334,123 @@ export const getUser = async (req: AuthenticatedRequest, res: Response) => {
       return res.status(400).json({ error: "userId is required" });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      include: {
-        subscription: {
-          include: { plan: true },
+    const [user, topics, quizzes, careerGoals, interviewSessions, resumes, documents] = await Promise.all([
+      prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          subscription: {
+            include: { plan: true },
+          },
+          usage: true,
+          adminProfile: true,
         },
-        usage: true,
-        adminProfile: true,
-        topics: {
-          take: 5,
-          orderBy: { createdAt: "desc" },
+      }),
+      prisma.topic.findMany({
+        where: { userId },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.quiz.findMany({
+        where: { userId },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.careerGoal.findMany({
+        where: { userId },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        include: {
+          tasks: {
+            take: 3,
+            orderBy: { order: "asc" },
+          },
         },
-        quizzes: {
-          take: 5,
-          orderBy: { createdAt: "desc" },
+      }),
+      prisma.interviewSession.findMany({
+        where: { userId },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+        include: {
+          questions: {
+            take: 3,
+            orderBy: { order: "asc" },
+          },
         },
-      },
-    });
+      }),
+      prisma.resume.findMany({
+        where: { userId },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.document.findMany({
+        where: { userId },
+        take: 5,
+        orderBy: { createdAt: "desc" },
+      }),
+    ]);
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
     }
 
-    return res.json({ user });
+    // Get activity stats
+    const [
+      topicsCount,
+      quizzesCount,
+      documentsCount,
+      careerRoadmapsCount,
+      interviewSessionsCount,
+      resumesCount,
+      totalQuizAttempts,
+      completedQuizAttempts,
+    ] = await Promise.all([
+      prisma.topic.count({ where: { userId } }),
+      prisma.quiz.count({ where: { userId } }),
+      prisma.document.count({ where: { userId } }),
+      prisma.careerGoal.count({ where: { userId } }),
+      prisma.interviewSession.count({ where: { userId } }),
+      prisma.resume.count({ where: { userId } }),
+      prisma.quizAttempt.count({ where: { userId } }),
+      prisma.quizAttempt.count({
+        where: { userId, status: "COMPLETED" },
+      }),
+    ]);
+
+    return res.json({
+      user: {
+        ...user,
+        activity: {
+          topics: {
+            total: topicsCount,
+            recent: topics,
+          },
+          quizzes: {
+            total: quizzesCount,
+            attempts: {
+              total: totalQuizAttempts,
+              completed: completedQuizAttempts,
+            },
+            recent: quizzes,
+          },
+          documents: {
+            total: documentsCount,
+            recent: documents,
+          },
+          careerRoadmaps: {
+            total: careerRoadmapsCount,
+            recent: careerGoals,
+          },
+          interviewSessions: {
+            total: interviewSessionsCount,
+            recent: interviewSessions,
+          },
+          resumes: {
+            total: resumesCount,
+            recent: resumes,
+          },
+        },
+      },
+    });
   } catch (error: any) {
     console.error("Get user error:", error);
     return res.status(500).json({ error: "Failed to fetch user" });
@@ -306,7 +468,15 @@ export const updateUserLimits = async (
       return res.status(400).json({ error: "userId is required" });
     }
 
-    const { maxTopics, maxQuizzes, maxDocuments, allowedModels } = req.body;
+    const {
+      maxTopics,
+      maxQuizzes,
+      maxDocuments,
+      maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth,
+      maxResumes,
+      allowedModels,
+    } = req.body;
 
     // Check if user exists
     const user = await prisma.user.findUnique({
@@ -335,6 +505,9 @@ export const updateUserLimits = async (
       maxTopics,
       maxQuizzes,
       maxDocuments,
+      maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth,
+      maxResumes,
       allowedModels,
     });
 
@@ -496,6 +669,120 @@ export const revokeAdmin = async (req: AuthenticatedRequest, res: Response) => {
 };
 
 /**
+ * Ban a user
+ */
+export const banUser = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const { reason } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    // Prevent banning yourself
+    if (userId === req.user?.id) {
+      return res.status(400).json({
+        error: "Cannot ban yourself",
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { adminProfile: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    // Prevent banning admins (only super admins can ban other admins)
+    if (user.adminProfile && req.admin?.role !== "SUPER_ADMIN") {
+      return res.status(403).json({
+        error: "Cannot ban admin users",
+        message: "Only super admins can ban other admins",
+      });
+    }
+
+    const bannedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned: true,
+        bannedAt: new Date(),
+        banReason: reason || "Banned by administrator",
+        bannedBy: req.user?.id,
+      } as any,
+    });
+
+    return res.json({
+      message: "User banned successfully",
+      user: {
+        id: bannedUser.id,
+        email: bannedUser.email,
+        name: bannedUser.name,
+        isBanned: bannedUser.isBanned,
+        bannedAt: bannedUser.bannedAt,
+        banReason: bannedUser.banReason,
+        bannedBy: bannedUser.bannedBy,
+      },
+    });
+  } catch (error: any) {
+    console.error("Ban user error:", error);
+    return res.status(500).json({ error: "Failed to ban user" });
+  }
+};
+
+/**
+ * Unban a user
+ */
+export const unbanUser = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    if (!(user as any).isBanned) {
+      return res.status(400).json({
+        error: "User is not banned",
+      });
+    }
+
+    const unbannedUser = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isBanned: false,
+        bannedAt: null,
+        banReason: null,
+        bannedBy: null,
+      } as any,
+    });
+
+    return res.json({
+      message: "User unbanned successfully",
+      user: {
+        id: unbannedUser.id,
+        email: unbannedUser.email,
+        name: unbannedUser.name,
+        isBanned: unbannedUser.isBanned,
+      },
+    });
+  } catch (error: any) {
+    console.error("Unban user error:", error);
+    return res.status(500).json({ error: "Failed to unban user" });
+  }
+};
+
+/**
  * List all subscription plans
  */
 export const listPlans = async (req: AuthenticatedRequest, res: Response) => {
@@ -523,6 +810,9 @@ export const createPlan = async (req: AuthenticatedRequest, res: Response) => {
       maxTopics,
       maxQuizzes,
       maxDocuments,
+      maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth,
+      maxResumes,
       allowedModels,
     } = req.body;
 
@@ -539,6 +829,9 @@ export const createPlan = async (req: AuthenticatedRequest, res: Response) => {
         maxTopics: maxTopics || 0,
         maxQuizzes: maxQuizzes || 0,
         maxDocuments: maxDocuments || 0,
+        maxCareerRoadmaps: maxCareerRoadmaps ?? 0,
+        maxInterviewSessionsPerMonth: maxInterviewSessionsPerMonth ?? 0,
+        maxResumes: maxResumes ?? 0,
         allowedModels: allowedModels || [],
       },
     });
@@ -567,6 +860,9 @@ export const updatePlan = async (req: AuthenticatedRequest, res: Response) => {
       maxTopics,
       maxQuizzes,
       maxDocuments,
+      maxCareerRoadmaps,
+      maxInterviewSessionsPerMonth,
+      maxResumes,
       allowedModels,
     } = req.body;
 
@@ -588,6 +884,9 @@ export const updatePlan = async (req: AuthenticatedRequest, res: Response) => {
     if (maxTopics !== undefined) updateData.maxTopics = maxTopics;
     if (maxQuizzes !== undefined) updateData.maxQuizzes = maxQuizzes;
     if (maxDocuments !== undefined) updateData.maxDocuments = maxDocuments;
+    if (maxCareerRoadmaps !== undefined) updateData.maxCareerRoadmaps = maxCareerRoadmaps;
+    if (maxInterviewSessionsPerMonth !== undefined) updateData.maxInterviewSessionsPerMonth = maxInterviewSessionsPerMonth;
+    if (maxResumes !== undefined) updateData.maxResumes = maxResumes;
     if (allowedModels !== undefined) updateData.allowedModels = allowedModels;
 
     const updated = await prisma.subscriptionPlan.update({

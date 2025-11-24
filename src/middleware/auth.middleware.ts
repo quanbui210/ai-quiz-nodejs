@@ -50,6 +50,14 @@ export const authenticate = async (
       },
     });
 
+    if (prismaUser && (prismaUser as any).isBanned) {
+      return res.status(403).json({
+        error: "Account banned",
+        message: (prismaUser as any).banReason || "Your account has been banned. Please contact support for more information.",
+        bannedAt: (prismaUser as any).bannedAt,
+      });
+    }
+
     if (!prismaUser) {
       prismaUser = await prisma.user.create({
         data: {

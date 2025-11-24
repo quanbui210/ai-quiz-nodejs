@@ -7,6 +7,8 @@ import {
   changeUserSubscription,
   makeAdmin,
   revokeAdmin,
+  banUser,
+  unbanUser,
   listPlans,
   createPlan,
   updatePlan,
@@ -32,6 +34,8 @@ router.put("/users/:userId/limits", updateUserLimits);
 router.put("/users/:userId/subscription", changeUserSubscription);
 router.post("/users/:userId/make-admin", requireSuperAdmin, makeAdmin);
 router.delete("/users/:userId/revoke-admin", requireSuperAdmin, revokeAdmin);
+router.post("/users/:userId/ban", banUser);
+router.post("/users/:userId/unban", unbanUser);
 
 router.get("/plans", listPlans);
 router.post("/plans", requireSuperAdmin, createPlan);

@@ -15,6 +15,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  // Ban status
+  isBanned  Boolean   @default(false)
+  bannedAt  DateTime?
+  banReason String?
+  bannedBy  String?   // Admin user ID who banned this user
+
   topics            Topic[]
   quizzes           Quiz[]
   answers           Answer[]

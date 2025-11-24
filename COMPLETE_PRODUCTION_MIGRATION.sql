@@ -177,6 +177,7 @@ CREATE TABLE IF NOT EXISTS "InterviewAnswer" (
     "userAnswer" TEXT NOT NULL,
     "aiScore" DOUBLE PRECISION,
     "improvementTips" TEXT,
+    "exampleAnswer" TEXT,
     "starFormatScore" JSONB,
     "answeredAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -263,6 +264,8 @@ CREATE TABLE IF NOT EXISTS "CareerTask" (
     "order" INTEGER NOT NULL DEFAULT 0,
     "estimatedHours" INTEGER,
     "dependencies" TEXT[],
+    "subtopics" JSONB,
+    "suggestedProjects" JSONB,
     "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -413,11 +416,37 @@ END $$;
 -- ============================================
 CREATE INDEX IF NOT EXISTS "Quiz_careerGoalId_idx" ON "Quiz"("careerGoalId");
 
+-- Step 8: Add new columns to existing tables (latest changes)
+-- ============================================
+
+-- Add exampleAnswer to InterviewAnswer (if table exists)
+DO $$ BEGIN
+    ALTER TABLE "InterviewAnswer" ADD COLUMN IF NOT EXISTS "exampleAnswer" TEXT;
+EXCEPTION
+    WHEN undefined_table THEN null;
+END $$;
+
+-- Add subtopics and suggestedProjects to CareerTask (if table exists)
+DO $$ BEGIN
+    ALTER TABLE "CareerTask" ADD COLUMN IF NOT EXISTS "subtopics" JSONB;
+    ALTER TABLE "CareerTask" ADD COLUMN IF NOT EXISTS "suggestedProjects" JSONB;
+EXCEPTION
+    WHEN undefined_table THEN null;
+END $$;
+
+-- Add errorMessage to Document (if table exists)
+DO $$ BEGIN
+    ALTER TABLE "Document" ADD COLUMN IF NOT EXISTS "errorMessage" TEXT;
+EXCEPTION
+    WHEN undefined_table THEN null;
+END $$;
+
 -- ============================================
 -- MIGRATION COMPLETE
 -- ============================================
 -- Next steps:
 -- 1. Run: railway run npm run prisma:generate
 -- 2. Update SubscriptionPlan records (see PRODUCTION_DEPLOYMENT.md)
+-- 3. Run: railway run npm run sync:subscriptions
 -- ============================================
 
