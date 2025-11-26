@@ -22,9 +22,6 @@ export interface ProcessedDocument {
   chunks: DocumentChunk[];
 }
 
-/**
- * Extract text from various document formats
- */
 export async function extractTextFromFile(
   filePath: string,
   mimeType: string,

@@ -1,3 +1,4 @@
+import "./instrumentation"; // Must be the first import
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";

@@ -6,10 +6,11 @@ import { generateEmbedding } from "../../utils/embeddings";
 import { findSimilarChunks } from "../../utils/pgvector";
 import { incrementQuizCount } from "../../utils/usage";
 import { Difficulty, QuizType, QuizStatus } from "@prisma/client";
+import { observeOpenAI } from "@langfuse/openai";
 
-const openai = new OpenAI({
+const openai = observeOpenAI(new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}));
 
 export const getDocumentQuizzes = async (
   req: AuthenticatedRequest,

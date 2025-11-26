@@ -1,13 +1,14 @@
 import OpenAI from "openai";
+import { observeOpenAI } from "@langfuse/openai";
 
 const DEFAULT_RESUME_MODEL =
   process.env.OPENAI_RESUME_MODEL ||
   process.env.OPENAI_DEFAULT_MODEL ||
   "gpt-4o-mini";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+  const openai = observeOpenAI(new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  }));
 
 const safeJsonParse = <T>(value?: string | null): T | null => {
   if (!value) {

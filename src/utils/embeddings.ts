@@ -1,9 +1,10 @@
 import OpenAI from "openai";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+import { observeOpenAI } from "@langfuse/openai";
 
+const openai = observeOpenAI(new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+}));
 const EMBEDDING_MODEL = "text-embedding-3-small"; // 1536 dimensions, cheaper
 // Alternative: "text-embedding-3-large" for 3072 dimensions (better quality, more expensive)
 

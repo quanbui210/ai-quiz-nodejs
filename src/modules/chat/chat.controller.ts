@@ -4,10 +4,11 @@ import { AuthenticatedRequest } from "../../middleware/limit-check.middleware";
 import OpenAI from "openai";
 import { generateEmbedding } from "../../utils/embeddings";
 import { findSimilarChunks } from "../../utils/pgvector";
+import { observeOpenAI } from "@langfuse/openai";
 
-const openai = new OpenAI({
+const openai = observeOpenAI(new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}));
 
 export const createChatSession = async (
   req: AuthenticatedRequest,
@@ -57,10 +58,8 @@ export const createChatSession = async (
     let session;
     let generatedTitle = title;
 
-    // Auto-generate title from document if not provided
     if (!generatedTitle && document) {
       try {
-        // Get first few chunks to generate a title
         const firstChunks = await prisma.documentEmbedding.findMany({
           where: { documentId: document.id },
           orderBy: { chunkIndex: "asc" },
@@ -75,6 +74,7 @@ export const createChatSession = async (
 
           const titleCompletion = await openai.chat.completions.create({
             model: selectedModel,
+            stream: false, // Non-streaming: simpler for short titles
             messages: [
               {
                 role: "system",
@@ -92,14 +92,12 @@ export const createChatSession = async (
 
           generatedTitle =
             titleCompletion.choices[0]?.message?.content?.trim() || null;
-        } else {
-          // Fallback to filename-based title
+          } else {
           const filenameWithoutExt = document.filename.replace(/\.[^/.]+$/, "");
           generatedTitle = `Chat: ${filenameWithoutExt.substring(0, 40)}`;
         }
       } catch (error: any) {
         console.error("Error generating chat title:", error);
-        // Fallback to filename-based title
         if (document) {
           const filenameWithoutExt = document.filename.replace(/\.[^/.]+$/, "");
           generatedTitle = `Chat: ${filenameWithoutExt.substring(0, 40)}`;

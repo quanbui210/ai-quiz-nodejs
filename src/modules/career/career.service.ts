@@ -6,14 +6,17 @@ import {
   Timeframe,
 } from "@prisma/client";
 
+import { observeOpenAI } from "@langfuse/openai";
+import { trace, context } from "@opentelemetry/api";
+
 const DEFAULT_CAREER_MODEL =
   process.env.OPENAI_CAREER_MODEL ||
   process.env.OPENAI_DEFAULT_MODEL ||
   "gpt-4o-mini";
 
-const openai = new OpenAI({
+const openai = observeOpenAI(new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}));
 
 const safeJsonParse = <T>(value?: string | null): T | null => {
   if (!value) {
@@ -36,14 +39,14 @@ export interface SkillGapAnalysisInput {
 }
 
 export interface SkillGapAnalysis {
-  requiredSkills: string[]; // All skills needed for target role
-  userHasSkills: string[]; // Skills user already has (from resume)
-  missingSkills: string[]; // Skills user needs to learn (required - has)
+  requiredSkills: string[]; 
+  userHasSkills: string[]; 
+  missingSkills: string[]; 
   skillGapAnalysis: Array<{
     skill: string; // Skill name
-    status: "HAS" | "MISSING"; // Simple binary: user has it or needs to learn it
-    priority: "HIGH" | "MEDIUM" | "LOW"; // Priority for learning (based on importance for target role)
-    reason?: string; // Why this skill is important for the target role
+    status: "HAS" | "MISSING";
+    priority: "HIGH" | "MEDIUM" | "LOW";
+    reason?: string; 
   }>;
 }
 
@@ -54,12 +57,26 @@ export const generateSkillGapAnalysis = async (
     throw new Error("OpenAI API key is not configured");
   }
 
-  // Truncate resume text if too long to avoid token limits and JSON issues
-  const resumeTextTruncated = input.resumeText
-    ? input.resumeText.substring(0, 8000) // Limit to 8000 chars
-    : null;
+  const tracer = trace.getTracer("career-service");
+  const span = tracer.startSpan("generateSkillGapAnalysis");
 
-  const completion = await openai.chat.completions.create({
+  try {
+    const resumeTextTruncated = input.resumeText
+      ? input.resumeText.substring(0, 8000) 
+      : null;
+
+    span.setAttributes({
+      "career.currentRole": input.currentRole,
+      "career.targetRole": input.targetRole,
+      "career.timeframe": input.timeframe,
+      "career.resumeTextLength": input.resumeText?.length || 0,
+      "career.resumeTextTruncated": resumeTextTruncated ? resumeTextTruncated.length : 0,
+      "career.resumeTextPreview": input.resumeText?.substring(0, 500) || "none", // First 500 chars for debugging
+      "career.currentSkillsCount": input.currentSkills?.length || 0,
+      "career.currentSkills": JSON.stringify(input.currentSkills || []),
+    });
+
+    const completion = await openai.chat.completions.create({
     model: DEFAULT_CAREER_MODEL,
     temperature: 0.3, // Lower temperature for more consistent analysis
     max_tokens: 2000, // Increased for detailed analysis
@@ -182,7 +199,6 @@ Respond ONLY with valid JSON, no markdown, no code blocks, no explanations.`,
   // Try to clean the response if it has markdown code blocks
   let cleanedResponse = rawResponse;
   if (cleanedResponse) {
-    // Remove markdown code blocks if present
     cleanedResponse = cleanedResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
   }
 
@@ -335,7 +351,26 @@ Respond ONLY with valid JSON, no markdown, no code blocks, no explanations.`,
     .filter((skill) => skill && typeof skill === "string" && skill.trim().length > 0)
     .map((skill) => skill.trim());
 
+  span.setAttributes({
+    "career.extracted.requiredSkillsCount": parsed.requiredSkills.length,
+    "career.extracted.requiredSkills": JSON.stringify(parsed.requiredSkills),
+    "career.extracted.userHasSkillsCount": parsed.userHasSkills.length,
+    "career.extracted.userHasSkills": JSON.stringify(parsed.userHasSkills),
+    "career.extracted.missingSkillsCount": parsed.missingSkills.length,
+    "career.extracted.missingSkills": JSON.stringify(parsed.missingSkills),
+    "career.extracted.skillGapAnalysisCount": parsed.skillGapAnalysis.length,
+  });
+
+  span.setStatus({ code: 1 }); // OK
+  span.end();
+
   return parsed;
+  } catch (error: any) {
+    span.recordException(error);
+    span.setStatus({ code: 2, message: error.message }); // ERROR
+    span.end();
+    throw error;
+  }
 };
 
 export interface RoadmapResource {
@@ -401,12 +436,38 @@ export const generateRoadmapPlan = async (
     throw new Error("OpenAI API key is not configured");
   }
 
-  // Truncate resume text if too long to avoid token limits and JSON issues
-  const resumeTextTruncated = input.resumeText
-    ? input.resumeText.substring(0, 8000) // Limit to 8000 chars
-    : null;
+  // Create a trace span for roadmap generation
+  const tracer = trace.getTracer("career-service");
+  const span = tracer.startSpan("generateRoadmapPlan");
 
-  const completion = await openai.chat.completions.create({
+  try {
+    // Truncate resume text if too long to avoid token limits and JSON issues
+    const resumeTextTruncated = input.resumeText
+      ? input.resumeText.substring(0, 8000) // Limit to 8000 chars
+      : null;
+
+    span.setAttributes({
+      "roadmap.currentRole": input.currentRole,
+      "roadmap.targetRole": input.targetRole,
+      "roadmap.timeframe": input.timeframe,
+      "roadmap.hasAnalysis": input.analysis !== null,
+      "roadmap.resumeTextLength": input.resumeText?.length || 0,
+      "roadmap.resumeTextTruncated": resumeTextTruncated ? resumeTextTruncated.length : 0,
+      "roadmap.currentSkillsCount": input.currentSkills?.length || 0,
+      "roadmap.currentSkills": JSON.stringify(input.currentSkills || []),
+      "roadmap.hasExistingProgress": input.existingProgress !== undefined,
+    });
+
+    if (input.analysis) {
+      span.setAttributes({
+        "roadmap.analysis.requiredSkillsCount": input.analysis.requiredSkills?.length || 0,
+        "roadmap.analysis.userHasSkillsCount": input.analysis.userHasSkills?.length || 0,
+        "roadmap.analysis.missingSkillsCount": input.analysis.missingSkills?.length || 0,
+        "roadmap.analysis.missingSkills": JSON.stringify(input.analysis.missingSkills || []),
+      });
+    }
+
+    const completion = await openai.chat.completions.create({
     model: DEFAULT_CAREER_MODEL,
     temperature: 0.45,
     max_tokens: 2500, // Increased for better responses
@@ -544,7 +605,24 @@ Respond ONLY with valid JSON matching this structure.`,
     throw new Error("Roadmap plan missing phases array");
   }
 
+  const totalTasks = parsed.phases.reduce((sum, phase) => sum + (phase.tasks?.length || 0), 0);
+  span.setAttributes({
+    "roadmap.generated.totalWeeks": parsed.totalWeeks,
+    "roadmap.generated.phasesCount": parsed.phases.length,
+    "roadmap.generated.totalTasks": totalTasks,
+    "roadmap.generated.overview": parsed.overview?.substring(0, 200) || "none",
+  });
+
+  span.setStatus({ code: 1 }); // OK
+  span.end();
+
   return parsed;
+  } catch (error: any) {
+    span.recordException(error);
+    span.setStatus({ code: 2, message: error.message }); // ERROR
+    span.end();
+    throw error;
+  }
 };
 
 export interface QuizSuggestion {
