@@ -26,6 +26,7 @@ const safeJsonParse = <T>(value?: string | null): T | null => {
 export interface GenerateQuestionInput {
   role: string;
   roleDescription?: string | null;
+  requiredSkills?: string[]; // Required skills for the position (alternative to roleDescription)
   level: InterviewLevel;
   yearsOfExperience?: number | null;
   country?: string | null;
@@ -87,15 +88,18 @@ export const generateInterviewQuestion = async (
 IMPORTANT: 
 - Return ONLY ONE question object, NOT an array. The root object must have "question" and "category" fields directly.
 - Tailor the question to the specific industry (e.g., e-commerce, edtech, communications, security, advertising) if provided.
-- Use the role description to understand specific responsibilities, technologies, team context, and requirements.
+- If requiredSkills are provided, use them to generate questions that test those specific skills. This takes priority over roleDescription.
+- If roleDescription is provided, use it to understand specific responsibilities, technologies, team context, and requirements.
+- If both requiredSkills and roleDescription are provided, combine them to create more targeted questions.
 - Consider industry-specific challenges, technologies, and best practices when generating the question.
-- Make the question relevant to the actual day-to-day work described in the role description.`,
+- Make the question relevant to the actual day-to-day work and required skills.`,
     },
     {
       role: "user" as const,
       content: JSON.stringify({
         role: input.role,
         roleDescription: input.roleDescription || null,
+        requiredSkills: input.requiredSkills || null,
         level: input.level,
         yearsOfExperience: input.yearsOfExperience,
         country: input.country,

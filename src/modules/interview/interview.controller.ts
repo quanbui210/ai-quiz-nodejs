@@ -49,6 +49,7 @@ export const createInterviewSession = async (
     const {
       role,
       roleDescription,
+      requiredSkills,
       level,
       yearsOfExperience,
       country,
@@ -70,16 +71,50 @@ export const createInterviewSession = async (
         ? Math.min(questionCount, 20)
         : DEFAULT_TOTAL_QUESTIONS;
 
+    // Get user profile for prefilling
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        currentSkills: true,
+        onboardingResumeId: true,
+        yearsOfExperience: true,
+        industry: true,
+      },
+    });
+
+    // Use provided resumeId or fall back to onboarding resume
+    let effectiveResumeId = resumeId || user?.onboardingResumeId || null;
     let resume: { id: string; parsedText: string | null } | null = null;
-    if (resumeId) {
+    if (effectiveResumeId) {
       resume = await prisma.resume.findFirst({
-        where: { id: resumeId, userId: req.user.id },
+        where: { id: effectiveResumeId, userId: req.user.id },
         select: { id: true, parsedText: true },
       });
       if (!resume) {
         return res.status(404).json({ error: "Resume not found" });
       }
     }
+
+    // Normalize requiredSkills
+    let normalizedRequiredSkills: string[] = [];
+    if (Array.isArray(requiredSkills)) {
+      normalizedRequiredSkills = requiredSkills
+        .map((skill: unknown) => (typeof skill === "string" ? skill.trim() : null))
+        .filter((skill): skill is string => Boolean(skill && skill.length > 0));
+    }
+
+    // Use saved currentSkills if requiredSkills not provided and we have saved skills
+    if (normalizedRequiredSkills.length === 0 && user?.currentSkills && user.currentSkills.length > 0) {
+      normalizedRequiredSkills = user.currentSkills;
+    }
+
+    // Use saved yearsOfExperience and industry if not provided
+    const effectiveYearsOfExperience = yearsOfExperience !== undefined && yearsOfExperience !== null
+      ? Number(yearsOfExperience)
+      : (user?.yearsOfExperience || null);
+    const effectiveIndustry = industry
+      ? String(industry).trim()
+      : (user?.industry || null);
 
     const session = await prisma.interviewSession.create({
       data: {
@@ -88,13 +123,11 @@ export const createInterviewSession = async (
         roleDescription: roleDescription
           ? String(roleDescription).trim()
           : null,
+        requiredSkills: normalizedRequiredSkills,
         level,
-        yearsOfExperience:
-          yearsOfExperience !== undefined && yearsOfExperience !== null
-            ? Number(yearsOfExperience)
-            : null,
+        yearsOfExperience: effectiveYearsOfExperience,
         country: country ? String(country).trim() : null,
-        industry: industry ? String(industry).trim() : null,
+        industry: effectiveIndustry,
         resumeId: resume?.id,
         totalQuestions: parsedQuestionCount,
       },
@@ -103,6 +136,7 @@ export const createInterviewSession = async (
     const generatedQuestion = await generateInterviewQuestion({
       role: session.role,
       roleDescription: session.roleDescription,
+      requiredSkills: normalizedRequiredSkills.length > 0 ? normalizedRequiredSkills : undefined,
       level: session.level,
       yearsOfExperience: session.yearsOfExperience,
       country: session.country,
@@ -270,6 +304,9 @@ export const generateNextInterviewQuestion = async (
     const generatedQuestion = await generateInterviewQuestion({
       role: session.role,
       roleDescription: session.roleDescription,
+      requiredSkills: (session as any).requiredSkills && Array.isArray((session as any).requiredSkills) && (session as any).requiredSkills.length > 0
+        ? (session as any).requiredSkills
+        : undefined,
       level: session.level,
       yearsOfExperience: session.yearsOfExperience,
       country: session.country,

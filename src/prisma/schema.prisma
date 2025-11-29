@@ -21,6 +21,15 @@ model User {
   banReason String?
   bannedBy  String?   // Admin user ID who banned this user
 
+  // Onboarding & Profile
+  hasCompletedOnboarding Boolean   @default(false)
+  currentPosition         String?
+  targetRole              String?  // User's career goal/target role from onboarding
+  currentSkills           String[] // User's current skills for prefilling forms
+  onboardingResumeId     String?  // Reference to Resume used during onboarding
+  yearsOfExperience       Int?
+  industry                String?
+
   topics            Topic[]
   quizzes           Quiz[]
   answers           Answer[]
@@ -321,6 +330,13 @@ model Resume {
   analysisWeaknesses String[] // Areas for improvement
   analysisSuggestions Json? // Detailed suggestions and recommendations
   analyzedAt DateTime?   // When analysis was performed
+  
+  // Job matching fields
+  cvEmbedding Unsupported("vector(1536)")? // CV embedding for vector search (generated from parsedText)
+  extractedSkills String[] // Skills extracted from CV
+  yearsOfExperience Int? // Years of experience extracted from CV
+  educationLevel String? // Education level from CV
+  
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -329,6 +345,7 @@ model Resume {
   interviewSessions InterviewSession[]
 
   @@index([userId])
+  @@index([userId, status])
 }
 
 model DocumentEmbedding {
@@ -421,6 +438,7 @@ model InterviewSession {
   resumeId          String?
   role              String
   roleDescription   String?         @db.Text
+  requiredSkills    String[]        // Required skills for the position (alternative to roleDescription)
   level             InterviewLevel
   yearsOfExperience Int?
   country           String?
@@ -518,11 +536,15 @@ model CareerGoal {
   userId           String
   currentRole      String
   targetRole       String
+  targetCountryCode String?
+  targetLocation   String?
   timeframe        Timeframe
   currentSkills    String[]
   requiredSkills   String[]
   skillGapAnalysis Json?
   roadmapPlan      Json?
+  jobMarketInsights Json?
+  jobMarketUpdatedAt DateTime?
   progress         Float      @default(0)
   status           GoalStatus @default(ACTIVE)
   startedAt        DateTime   @default(now())
@@ -563,6 +585,90 @@ model CareerQuizSuggestion {
   @@index([phase])
   @@unique([goalId, suggestedQuizTitle]) // Prevent duplicate suggestions per goal
 }
+
+// Job Matching System - New Architecture
+
+model Job {
+  id            String   @id @default(uuid())
+  externalId    String?  @unique // External job ID from Indeed/Apify
+  title         String
+  company       String?
+  location      String?  // e.g., "Helsinki, Finland"
+  country       String   @default("fi") // Country code
+  descriptionRaw String  @db.Text // Full job description text (raw HTML/text)
+  url           String?  // Original job posting URL
+  postedDate    DateTime? // When job was posted
+  scrapedAt     DateTime @default(now()) // When we scraped it
+  salaryMin     Int?
+  salaryMax     Int?
+  salaryCurrency String?
+  jobType       String[] // e.g., ["Full-time", "Part-time"]
+  experienceLevel String? // e.g., "Junior", "Mid", "Senior"
+  role          String?  // Normalized role (e.g., "Software Engineer", "Data Engineer")
+  
+  // Processing status
+  isProcessed   Boolean  @default(false)
+  processedAt   DateTime?
+  
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  analysis      JobAnalysis?
+
+  @@index([country, location])
+  @@index([postedDate])
+  @@index([scrapedAt])
+  @@index([isProcessed])
+  @@index([role])
+  @@index([country, role, postedDate])
+}
+
+model JobAnalysis {
+  id                String   @id @default(uuid())
+  jobId             String   @unique
+  mustHaveSkills    String[] // Required skills (normalized)
+  niceToHaveSkills  String[] // Preferred skills (normalized)
+  experienceYears   Int?     // Required years of experience
+  educationLevel    String?  // e.g., "Bachelor's", "Master's"
+  languageRequirements String[] // e.g., ["Finnish", "English"]
+  analysisEmbedding Unsupported("vector(1536)") // OpenAI embedding for vector search
+  processedAt       DateTime @default(now())
+  
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  // Note: Vector index will be created via SQL migration
+}
+
+model MarketTrends {
+  id                String   @id @default(uuid())
+  country           String   @default("fi")
+  location           String?  // e.g., "Helsinki" or null for country-wide
+  role               String?  // e.g., "Software Engineer" or null for all roles
+  periodStart        DateTime // Start of analysis period
+  periodEnd          DateTime // End of analysis period
+  
+  // Aggregated statistics
+  totalJobs          Int      @default(0)
+  averageExperience  Float?   // Average years of experience required
+  topMustHaveSkills  Json     // {skill: count, skill: count} - top 20
+  topNiceToHaveSkills Json    // {skill: count, skill: count} - top 20
+  salaryStats        Json?    // {min, max, median, average}
+  companyStats       Json?    // Top companies hiring
+  roleDistribution   Json?    // Distribution of roles
+  
+  calculatedAt       DateTime @default(now())
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([country, location, role, periodStart], name: "market_trends_unique")
+  @@index([country, location])
+  @@index([role])
+  @@index([calculatedAt])
+}
+
+// User CV Embedding for job matching
+// We'll add this to Resume model instead of separate table
 
 model CareerTask {
   id             String     @id @default(uuid())

@@ -225,7 +225,6 @@ export function chunkText(
   let startIndex = 0;
 
   for (const sentence of sentences) {
-    // If adding this sentence would exceed chunk size, save current chunk
     if (
       currentChunk.length + sentence.length > chunkSize &&
       currentChunk.length > 0

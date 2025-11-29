@@ -26,7 +26,7 @@ export const authenticate = async (
         .json({ error: "Missing or invalid authorization header" });
     }
 
-    const token = authHeader.substring(7); // Remove "Bearer " prefix
+    const token = authHeader.substring(7); 
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {

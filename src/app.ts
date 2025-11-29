@@ -1,4 +1,5 @@
 import "./instrumentation"; // Must be the first import
+import "./cron"; // Initialize cron jobs (if enabled)
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -15,6 +16,10 @@ import chatRoutes from "./modules/chat/chat.routes";
 import interviewRoutes from "./modules/interview/interview.routes";
 import careerRoutes from "./modules/career/career.routes";
 import resumeRoutes from "./modules/resume/resume.routes";
+import userRoutes from "./modules/user/user.routes";
+import marketRoutes from "./modules/market/market.routes";
+import jobCronRoutes from "./modules/jobs/job-cron.routes";
+import jobRoutes from "./modules/jobs/job.routes";
 import { handleWebhook } from "./modules/subscription/subscription.controller";
 
 
@@ -81,6 +86,15 @@ app.get("/", (req, res) => {
       interview: "/api/v1/interview",
       career: "/api/v1/career",
       resume: "/api/v1/resume",
+      user: "/api/v1/user",
+      market: "/api/v1/market",
+      jobs: "/api/jobs",
+      batch: "/api/batch",
+    },
+    notes: {
+      market: "⚠️ /api/v1/market/insights is DEPRECATED - use /api/jobs/trends instead",
+      jobs: "Job matching system - match CV to jobs, get market trends, browse recent jobs",
+      batch: "Cron endpoints - trigger job scraping and processing (admin only)",
     },
     swagger: "/api-docs",
   });
@@ -97,6 +111,10 @@ app.use("/api/v1/chat", chatRoutes);
 app.use("/api/v1/interview", interviewRoutes);
 app.use("/api/v1/career", careerRoutes);
 app.use("/api/v1/resume", resumeRoutes);
+app.use("/api/v1/user", userRoutes);
+app.use("/api/v1/market", marketRoutes);
+app.use("/api/batch", jobCronRoutes);
+app.use("/api/jobs", jobRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

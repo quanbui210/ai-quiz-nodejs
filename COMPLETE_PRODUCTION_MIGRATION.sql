@@ -95,6 +95,17 @@ ADD COLUMN IF NOT EXISTS "interviewSessionsThisMonth" INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS "resumesCount" INTEGER DEFAULT 0,
 ADD COLUMN IF NOT EXISTS "lastMonthReset" TIMESTAMP DEFAULT NOW();
 
+-- Add job market intelligence columns to CareerGoal
+DO $$ BEGIN
+    ALTER TABLE "CareerGoal"
+    ADD COLUMN IF NOT EXISTS "targetCountryCode" TEXT,
+    ADD COLUMN IF NOT EXISTS "targetLocation" TEXT,
+    ADD COLUMN IF NOT EXISTS "jobMarketInsights" JSONB,
+    ADD COLUMN IF NOT EXISTS "jobMarketUpdatedAt" TIMESTAMP;
+EXCEPTION
+    WHEN undefined_table THEN null;
+END $$;
+
 -- Step 3: Create Resume table
 -- ============================================
 
@@ -208,11 +219,15 @@ CREATE TABLE IF NOT EXISTS "CareerGoal" (
     "userId" TEXT NOT NULL,
     "currentRole" TEXT NOT NULL,
     "targetRole" TEXT NOT NULL,
+    "targetCountryCode" TEXT,
+    "targetLocation" TEXT,
     "timeframe" "Timeframe" NOT NULL,
     "currentSkills" TEXT[],
     "requiredSkills" TEXT[],
     "skillGapAnalysis" JSONB,
     "roadmapPlan" JSONB,
+    "jobMarketInsights" JSONB,
+    "jobMarketUpdatedAt" TIMESTAMP,
     "progress" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "status" "GoalStatus" NOT NULL DEFAULT 'ACTIVE',
     "startedAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

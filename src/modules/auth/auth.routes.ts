@@ -6,6 +6,7 @@ import {
   getSession,
   getCurrentUser,
   signOut,
+  refreshToken,
 } from "./auth.controller";
 import { authenticate } from "../../middleware/auth.middleware";
 
@@ -232,5 +233,64 @@ router.get("/me", authenticate, getCurrentUser);
  *               $ref: "#/components/schemas/Error"
  */
 router.post("/signout", signOut);
+
+/**
+ * @swagger
+ * /api/v1/auth/refresh:
+ *   post:
+ *     summary: Refresh access token using refresh token
+ *     tags: [Authentication]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refresh_token
+ *             properties:
+ *               refresh_token:
+ *                 type: string
+ *                 description: Supabase refresh token
+ *     responses:
+ *       200:
+ *         description: Token refreshed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 session:
+ *                   $ref: "#/components/schemas/Session"
+ *                 access_token:
+ *                   type: string
+ *                 refresh_token:
+ *                   type: string
+ *                 expires_at:
+ *                   type: number
+ *                 expires_in:
+ *                   type: number
+ *       400:
+ *         description: Missing refresh token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       401:
+ *         description: Invalid or expired refresh token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: "#/components/schemas/Error"
+ */
+router.post("/refresh", refreshToken);
 
 export default router;

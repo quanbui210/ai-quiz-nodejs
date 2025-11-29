@@ -16,6 +16,7 @@ import {
   generateSkillGapAnalysis,
   suggestQuizTopicsFromRoadmap,
 } from "./career.service";
+
 import { generateRoadmapPDF } from "../../utils/pdf-generator";
 
 const isValidEnumValue = <T extends Record<string, string>>(
@@ -268,11 +269,39 @@ export const createCareerGoal = async (
       currentSkills,
       customWeeks,
       resumeId,
+      targetCountryCode,
+      targetLocation,
     } = req.body;
 
-    if (!currentRole || !targetRole) {
+    if (
+      !targetRole ||
+      typeof targetRole !== "string" ||
+      targetRole.trim().length === 0
+    ) {
       return res.status(400).json({
-        error: "Current role and target role are required",
+        error: "Target role is required",
+      });
+    }
+
+    const normalizedTargetRole = targetRole.trim();
+
+    let effectiveCurrentRole =
+      typeof currentRole === "string" && currentRole.trim().length > 0
+        ? currentRole.trim()
+        : null;
+
+    if (!effectiveCurrentRole) {
+      const user = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { currentPosition: true },
+      });
+      effectiveCurrentRole = user?.currentPosition || null;
+    }
+
+    if (!effectiveCurrentRole) {
+      return res.status(400).json({
+        error:
+          "Current role is required. Please provide it or complete onboarding first.",
       });
     }
 
@@ -301,68 +330,71 @@ export const createCareerGoal = async (
 
       if (!resume) {
         return res.status(404).json({
-          error: "Resume not found or not ready. Please ensure the resume is uploaded and processed.",
+          error:
+            "Resume not found or not ready. Please ensure the resume is uploaded and processed.",
         });
       }
     }
 
-    // Skills will be extracted from resume by AI - no manual input needed
-    // If no resume, skip skill gap analysis and generate basic roadmap
-    let normalizedSkills: string[] = [];
-    let analysis: Awaited<ReturnType<typeof generateSkillGapAnalysis>> | null = null;
+    // Normalize manually provided skills (optional)
+    let normalizedSkills: string[] =
+      Array.isArray(currentSkills) && currentSkills.length > 0
+        ? currentSkills
+            .map((skill: unknown) =>
+              typeof skill === "string" ? skill.trim() : null,
+            )
+            .filter((skill): skill is string => Boolean(skill))
+        : [];
+
+    let analysis: Awaited<ReturnType<typeof generateSkillGapAnalysis>> | null =
+      null;
 
     if (resume?.parsedText) {
-      // Resume provided - extract skills from resume and do full skill gap analysis
-      console.log(`[Career Goal] Using resume for analysis: ${resume.id}, text length: ${resume.parsedText.length}`);
-      
-      // Optional: allow user to provide additional skills if they want
-      if (Array.isArray(currentSkills) && currentSkills.length > 0) {
-        normalizedSkills = currentSkills
-          .map((skill: unknown) => (typeof skill === "string" ? skill.trim() : null))
-          .filter((skill): skill is string => Boolean(skill));
-      }
+      console.log(
+        `[Career Goal] Using resume for analysis: ${resume.id}, text length: ${resume.parsedText.length}`,
+      );
 
-      // Generate skill gap analysis from resume
       analysis = await generateSkillGapAnalysis({
-        currentRole,
-        targetRole,
-        currentSkills: normalizedSkills, // Optional additional skills
+        currentRole: effectiveCurrentRole,
+        targetRole: normalizedTargetRole,
+        currentSkills: normalizedSkills,
         timeframe,
-        resumeText: resume.parsedText, // Primary source of skills
+        resumeText: resume.parsedText,
       });
 
-      // Extract skills from analysis for roadmap
-      normalizedSkills = analysis.requiredSkills || [];
-    } else {
-      // No resume - skip skill gap analysis, generate basic roadmap without detailed analysis
-      console.log(`[Career Goal] No resume provided - skipping skill gap analysis`);
-      
-      // Still allow basic skills input for roadmap generation (optional)
-      if (Array.isArray(currentSkills) && currentSkills.length > 0) {
-        normalizedSkills = currentSkills
-          .map((skill: unknown) => (typeof skill === "string" ? skill.trim() : null))
-          .filter((skill): skill is string => Boolean(skill));
+      if (analysis?.requiredSkills?.length) {
+        normalizedSkills = analysis.requiredSkills;
       }
     }
 
-    // Generate roadmap (with or without skill gap analysis)
+    // Job market insights removed - using new job matching system instead
+    // Users can get market insights from /api/jobs/trends endpoint
+    const jobMarketInsights = null;
+
     const roadmap = await generateRoadmapPlan({
-      currentRole,
-      targetRole,
+      currentRole: effectiveCurrentRole,
+      targetRole: normalizedTargetRole,
       timeframe,
       currentSkills: normalizedSkills,
-      analysis, // null if no resume
+      analysis,
       resumeText: resume?.parsedText || null,
+      jobMarketInsights,
     });
 
     const targetDate = calculateTargetDate(timeframe, customWeeks);
 
-    // Create goal with analysis data (if available)
+    const serializedJobMarketInsights = jobMarketInsights
+      ? (JSON.parse(JSON.stringify(jobMarketInsights)) as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
+
     const goal = await prisma.careerGoal.create({
       data: {
         userId: req.user.id,
-        currentRole: currentRole.trim(),
-        targetRole: targetRole.trim(),
+        currentRole: effectiveCurrentRole,
+        targetRole: normalizedTargetRole,
+        targetCountryCode:
+          normalizedCountryCode || defaultCountryCode || null,
+        targetLocation: normalizedLocation || null,
         timeframe,
         currentSkills: normalizedSkills,
         requiredSkills: analysis?.requiredSkills || [],
@@ -370,9 +402,11 @@ export const createCareerGoal = async (
           ? (analysis.skillGapAnalysis as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,
         roadmapPlan: roadmap as unknown as Prisma.InputJsonValue,
+        jobMarketInsights: serializedJobMarketInsights,
+        jobMarketUpdatedAt: jobMarketInsights ? new Date() : null,
         targetDate,
         status: GoalStatus.ACTIVE,
-      },
+      } as any,
     });
 
     // Persist roadmap artifacts (tasks, resources, milestones)
@@ -396,7 +430,20 @@ export const createCareerGoal = async (
       },
     });
 
-    return res.status(201).json({ goal: fullGoal });
+    const responseGoal = fullGoal
+      ? {
+          ...fullGoal,
+          jobMarketInsights:
+            jobMarketInsights ??
+            (((fullGoal as any).jobMarketInsights as JobMarketInsights | null) ||
+              null),
+        }
+      : fullGoal;
+
+    return res.status(201).json({
+      goal: responseGoal,
+      jobMarketInsights: jobMarketInsights ?? null,
+    });
   } catch (error: any) {
     console.error("Create career goal error:", error);
     return res.status(500).json({ error: "Failed to create career goal" });
@@ -429,13 +476,16 @@ export const listCareerGoals = async (
         id: true,
         currentRole: true,
         targetRole: true,
+        targetCountryCode: true,
+        targetLocation: true,
         timeframe: true,
         progress: true,
         status: true,
         requiredSkills: true,
         createdAt: true,
         targetDate: true,
-      },
+        jobMarketUpdatedAt: true,
+      } as any,
     });
 
     return res.json({ goals });
@@ -477,7 +527,16 @@ export const getCareerGoal = async (
       return res.status(404).json({ error: "Career goal not found" });
     }
 
-    return res.json({ goal });
+    const goalRecord = goal as any;
+    const jobMarketInsights: JobMarketInsights | null =
+      (goalRecord.jobMarketInsights as JobMarketInsights | null) ?? null;
+
+    const responseGoal = {
+      ...goal,
+      jobMarketInsights,
+    };
+
+    return res.json({ goal: responseGoal });
   } catch (error: any) {
     console.error("Get career goal error:", error);
     return res.status(500).json({ error: "Failed to fetch career goal" });
@@ -560,6 +619,38 @@ export const regenerateCareerRoadmap = async (
       return res.status(404).json({ error: "Career goal not found" });
     }
 
+    const defaultCountryCode =
+      process.env.ADZUNA_DEFAULT_COUNTRY?.trim().toLowerCase() || null;
+
+    const goalRecord = goal as any;
+
+    let jobMarketInsights: JobMarketInsights | null =
+      (goalRecord.jobMarketInsights as JobMarketInsights | null) ?? null;
+
+    if (
+      !jobMarketInsights ||
+      shouldRefreshJobMarketInsights(goalRecord.jobMarketUpdatedAt)
+    ) {
+      try {
+        const refreshed = await fetchAdzunaJobInsights({
+          role: goal.targetRole,
+          location: goalRecord.targetLocation || undefined,
+          country:
+            goalRecord.targetCountryCode ||
+            defaultCountryCode ||
+            undefined,
+        });
+        if (refreshed) {
+          jobMarketInsights = refreshed;
+        }
+      } catch (insightsError) {
+        console.error(
+          "[Career Goal] Failed to refresh Adzuna job insights:",
+          insightsError,
+        );
+      }
+    }
+
     const completedSkills = goal.tasks
       .filter((task) => task.status === TaskStatus.COMPLETED)
       .map((task) => task.title);
@@ -592,6 +683,7 @@ export const regenerateCareerRoadmap = async (
           .filter((task) => task.status === TaskStatus.IN_PROGRESS)
           .map((task) => task.title),
       },
+      jobMarketInsights,
     });
 
     await prisma.$transaction([
@@ -600,16 +692,25 @@ export const regenerateCareerRoadmap = async (
       prisma.careerTask.deleteMany({ where: { goalId: goal.id } }),
     ]);
 
+    const updateData: Prisma.CareerGoalUpdateInput = {
+      roadmapPlan: roadmap as unknown as Prisma.InputJsonValue,
+      requiredSkills: skillGap ? skillGap.requiredSkills : goal.requiredSkills,
+      skillGapAnalysis: skillGap
+        ? (skillGap.skillGapAnalysis as unknown as Prisma.InputJsonValue)
+        : (goal.skillGapAnalysis as Prisma.InputJsonValue),
+      progress: 0,
+    };
+
+    if (jobMarketInsights) {
+      (updateData as any).jobMarketInsights = JSON.parse(
+        JSON.stringify(jobMarketInsights),
+      ) as Prisma.InputJsonValue;
+      (updateData as any).jobMarketUpdatedAt = new Date();
+    }
+
     await prisma.careerGoal.update({
       where: { id: goal.id },
-      data: {
-        roadmapPlan: roadmap as unknown as Prisma.InputJsonValue,
-        requiredSkills: skillGap ? skillGap.requiredSkills : goal.requiredSkills,
-        skillGapAnalysis: skillGap
-          ? (skillGap.skillGapAnalysis as unknown as Prisma.InputJsonValue)
-          : goal.skillGapAnalysis as Prisma.InputJsonValue,  
-        progress: 0,
-      },
+      data: updateData,
     });
 
     await persistRoadmapArtifacts({
@@ -627,9 +728,20 @@ export const regenerateCareerRoadmap = async (
       },
     });
 
+    const responseGoal = refreshedGoal
+      ? {
+          ...refreshedGoal,
+          jobMarketInsights:
+            jobMarketInsights ??
+            (((refreshedGoal as any).jobMarketInsights as JobMarketInsights | null) ||
+              null),
+        }
+      : refreshedGoal;
+
     return res.json({
       message: "Career roadmap regenerated",
-      goal: refreshedGoal,
+      goal: responseGoal,
+      jobMarketInsights: jobMarketInsights ?? null,
     });
   } catch (error: any) {
     console.error("Regenerate career roadmap error:", error);

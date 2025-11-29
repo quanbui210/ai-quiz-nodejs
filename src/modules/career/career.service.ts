@@ -7,7 +7,8 @@ import {
 } from "@prisma/client";
 
 import { observeOpenAI } from "@langfuse/openai";
-import { trace, context } from "@opentelemetry/api";
+import { trace } from "@opentelemetry/api";
+import type { JobMarketInsights } from "../market/adzuna.service";
 
 const DEFAULT_CAREER_MODEL =
   process.env.OPENAI_CAREER_MODEL ||
@@ -427,6 +428,7 @@ export interface RoadmapInput {
     completedSkills?: string[];
     blockedAreas?: string[];
   };
+  jobMarketInsights?: JobMarketInsights | null;
 }
 
 export const generateRoadmapPlan = async (
@@ -436,12 +438,10 @@ export const generateRoadmapPlan = async (
     throw new Error("OpenAI API key is not configured");
   }
 
-  // Create a trace span for roadmap generation
   const tracer = trace.getTracer("career-service");
   const span = tracer.startSpan("generateRoadmapPlan");
 
   try {
-    // Truncate resume text if too long to avoid token limits and JSON issues
     const resumeTextTruncated = input.resumeText
       ? input.resumeText.substring(0, 8000) // Limit to 8000 chars
       : null;
@@ -467,6 +467,42 @@ export const generateRoadmapPlan = async (
       });
     }
 
+    if (input.jobMarketInsights) {
+      span.setAttributes({
+        "roadmap.jobMarket.location":
+          input.jobMarketInsights.location ||
+          input.jobMarketInsights.country,
+        "roadmap.jobMarket.sampleSize":
+          input.jobMarketInsights.sampleSize,
+        "roadmap.jobMarket.totalAvailable":
+          input.jobMarketInsights.totalAvailable,
+        "roadmap.jobMarket.topRequired": JSON.stringify(
+          input.jobMarketInsights.requiredSkills
+            .slice(0, 5)
+            .map((skill) => skill.skill),
+        ),
+      });
+    }
+
+    const sanitizedJobMarket = input.jobMarketInsights
+      ? {
+          location:
+            input.jobMarketInsights.location ||
+            input.jobMarketInsights.country,
+          sampleSize: input.jobMarketInsights.sampleSize,
+          totalAvailable: input.jobMarketInsights.totalAvailable,
+          requiredSkills: input.jobMarketInsights.requiredSkills,
+          niceToHaveSkills: input.jobMarketInsights.niceToHaveSkills,
+          technicalSkills: input.jobMarketInsights.technicalSkills,
+          softSkills: input.jobMarketInsights.softSkills,
+          domainKnowledge: input.jobMarketInsights.domainKnowledge,
+          salary: input.jobMarketInsights.salary,
+          topCompanies: input.jobMarketInsights.topCompanies,
+          sampleListings:
+            input.jobMarketInsights.sampleListings?.slice(0, 3) || [],
+        }
+      : null;
+
     const completion = await openai.chat.completions.create({
     model: DEFAULT_CAREER_MODEL,
     temperature: 0.45,
@@ -481,6 +517,7 @@ IMPORTANT CONTEXT:
 - If skillGapAnalysis is provided (not null), use it to create a targeted roadmap addressing specific skill gaps
 - If skillGapAnalysis is null/not provided, create a general roadmap based on the role transition (currentRole → targetRole) and currentSkills
 - If resume text is provided, use it to understand the user's background and create a personalized roadmap
+- If jobMarketInsights is provided, align tasks with the "requiredSkills" (treat these as mandatory) and highlight "niceToHaveSkills" as stretch or advanced goals. Prioritize phases that close the most frequent market gaps and reference market insights in the phase focus/overview (without repeating raw percentages).
 - Focus on actionable, learnable skills and practical projects
 
 Generate a structured learning plan as JSON with this exact structure:
@@ -577,6 +614,7 @@ Respond ONLY with valid JSON matching this structure.`,
           analysis: input.analysis,
           resumeText: resumeTextTruncated,
           existingProgress: input.existingProgress || null,
+          jobMarketInsights: sanitizedJobMarket,
         }),
       },
     ],

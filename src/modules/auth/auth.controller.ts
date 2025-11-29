@@ -6,6 +6,7 @@ export const loginWithGoogle = async (req: Request, res: Response) => {
   try {
     const { redirectTo } = req.query;
     const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+ 
     const redirectUrl = (redirectTo as string) || `${frontendUrl}/auth/callback`;
 
     console.log("[Google OAuth] FRONTEND_URL from env:", process.env.FRONTEND_URL);
@@ -260,6 +261,7 @@ export const getSession = async (
       session: {
         access_token: accessToken,
       },
+      hasCompletedOnboarding: (req.user as any)?.hasCompletedOnboarding ?? false,
     });
   } catch (error) {
     return res.status(500).json({ error: "Failed to get session" });
@@ -442,5 +444,43 @@ export const getCurrentUser = async (
     });
   } catch (error) {
     return res.status(500).json({ error: "Failed to get user" });
+  }
+};
+
+export const refreshToken = async (req: Request, res: Response) => {
+  try {
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+      return res.status(400).json({
+        error: "Refresh token is required",
+      });
+    }
+
+    const { data, error } = await supabase.auth.refreshSession({
+      refresh_token,
+    });
+
+    if (error || !data?.session) {
+      return res.status(401).json({
+        error: "Invalid or expired refresh token",
+        message: error?.message || "Failed to refresh session",
+      });
+    }
+
+    return res.json({
+      message: "Token refreshed successfully",
+      session: data.session,
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+      expires_at: data.session.expires_at,
+      expires_in: data.session.expires_in,
+    });
+  } catch (error: any) {
+    console.error("Token refresh error:", error);
+    return res.status(500).json({
+      error: "Failed to refresh token",
+      message: error.message || "An unexpected error occurred",
+    });
   }
 };
