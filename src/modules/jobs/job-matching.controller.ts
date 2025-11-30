@@ -106,12 +106,7 @@ export const matchJobs = async (
   }
 };
 
-/**
- * GET /api/jobs/recent
- * 
- * Get recent jobs with full data. If user has CV, includes match scores and analysis.
- * Jobs are sorted by match score (matched first), then by posted date.
- */
+
 export const getRecentJobs = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -121,11 +116,15 @@ export const getRecentJobs = async (
       return res.status(401).json({ error: "Unauthorized" });
     }
 
+    const defaultLimit = 100;
     const {
       location,
       role,
-      limit = 30,
+      limit = defaultLimit,
     } = req.query;
+    
+    const finalLimit = typeof limit === "string" ? parseInt(limit, 10) : defaultLimit;
+    console.log(`[Recent Jobs] Limit: ${finalLimit} (default: ${defaultLimit}, env: ${process.env.JOB_LISTING_LIMIT || "not set"})`);
 
     const whereClause: any = {};
 
@@ -151,7 +150,7 @@ export const getRecentJobs = async (
       orderBy: {
         postedDate: "desc",
       },
-      take: typeof limit === "string" ? parseInt(limit, 10) : 30,
+      take: 100,
     });
 
     const resume = await (prisma as any).resume.findFirst({
