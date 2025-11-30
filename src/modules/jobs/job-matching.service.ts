@@ -154,7 +154,7 @@ async function analyzeJobMatchWithLLM(params: {
 
 CRITICAL: TITLE/ROLE MATCHING IS THE MOST IMPORTANT FACTOR!
 
-STEP 1: FIRST check if the job title matches the candidate's current position/role type:
+STEP 1: FIRST check if the job title matches the candidate's current position/role type, also check for experience level in title.
 - If candidate is "Software Engineer", "Frontend Engineer", "Backend Engineer", "Full Stack Developer", "Software Developer" → ONLY match with similar engineering/development roles
 - If candidate is "Product Owner", "Product Manager", "Business Analyst" → ONLY match with product/business roles
 - If candidate is "Data Engineer", "Data Scientist", "ML Engineer" → ONLY match with data/ML roles
@@ -167,6 +167,8 @@ STEP 2: Only if roles are compatible, then analyze:
 3. Assess experience, education, and language matches
 4. Generate a detailed explanation with strengths, gaps, and recommendations
 
+RULES: Remember not to assume user's soft skills like "Lack of key required skills like Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail" just because they don't list them in their resume. Note that they could have that. Focus on technical skills, educational level and language skills, experience level and job title.
+FOR EXAMPLE, my current position is "Full Stack Developer" and in my resume I listed that I have 2 years of experience in Full Stack Development. But the job title is "Senior Full Stack Developer". In this case, the match score should be 0-45 because the experience level is not matching the job title. If the job title is Product Owner, Mobile Developer, Data Engineer or similar, then the match score should be 0-20 because the role is different.
 CRITICAL RULES - SCORING PRIORITY:
 1. TITLE/ROLE MATCHING: This is the PRIMARY factor. Incompatible roles = very low score (0-30)
 2. EXPERIENCE MATCHING: This is the SECOND MOST IMPORTANT factor after role matching!
@@ -190,7 +192,7 @@ SCORING FORMULA (approximate):
 - Apply 1.15x motivation boost (cap at 100)
 - Final score should reflect: Experience gap is MORE important than skill gaps
 - SKILL FILTERING: Ignore common/universal skills like "Git", "Vite", "npm", "yarn", "CI/CD" (every developer has these)
-- IGNORE LESS IMPORTANT SKILLS IN GAPS: Do NOT mention skills like "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" in gaps - these are minor UI libraries or state management tools, not core requirements. Focus on major gaps only.
+- IGNORE LESS IMPORTANT SKILLS IN GAPS: SOFT SKILLS LIKE "Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail" are not core requirements. Do NOT mention skills like "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" in gaps - these are minor UI libraries or state management tools, not core requirements. Focus on major gaps only.
 - IMPORTANT SKILLS TO CONSIDER: Testing frameworks (Jest, Vitest, Cypress, Playwright, etc.) ARE important and should be mentioned if missing. Core frameworks (React, Vue, Angular), languages (TypeScript, Python, Java), platforms (AWS, Azure, GCP), databases (PostgreSQL, MongoDB) are also important.
 - Focus on MAIN/IMPORTANT skills: frameworks, languages, platforms, databases, testing frameworks - NOT minor UI libraries or state management tools
 - Vector similarity (0-1) indicates semantic match - factor this into the score
