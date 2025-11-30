@@ -1,12 +1,12 @@
 import { ApifyClient } from "apify-client";
 import { SKILL_DICTIONARY } from "./skills-dictionary";
 
-// Legacy types (for backward compatibility during migration)
 export interface JobMarketInsights {
   role: string;
   location?: string;
   country: string;
   fetchedAt: Date;
+  query?: string;
   sampleSize: number;
   totalAvailable: number;
   salary?: {
@@ -52,7 +52,6 @@ export interface FetchAdzunaJobInsightsParams {
   resultsPerPage?: number;
 }
 
-// Use Indeed scraper for better data quality (full descriptions, company, salary)
 const APIFY_ACTOR_ID = "misceres/indeed-scraper";
 const APIFY_MAX_ITEMS = 50;
 
@@ -71,7 +70,6 @@ interface IndeedJobItem {
   rating?: number;
   url?: string;
   postedDate?: string;
-  // Company details (if parseCompanyDetails: true)
   companyDetails?: {
     website?: string;
     size?: string;
@@ -89,7 +87,6 @@ function parseSalaryFromText(text?: string): {
 } {
   if (!text) return {};
 
-  // Try to extract salary from Finnish format (e.g., "3000-5000 €/kk" or "4000€")
   const salaryMatch = text.match(
     /(\d[\d\s]*)\s*[-–—]\s*(\d[\d\s]*)\s*€|(\d[\d\s]*)\s*€/i,
   );
@@ -132,13 +129,6 @@ function extractSkillsFromText(text: string): Set<string> {
 function extractCompanyFromTitle(title?: string): string | undefined {
   if (!title) return undefined;
   
-  // Try to extract company from patterns like:
-  // "Company Name: Job Title"
-  // "Job Title, Company Name"
-  // "Company Name / Location"
-  // "Job Title - Company Name"
-  
-  // Common patterns in Finnish job titles
   const patterns = [
     /^([^:]+):/, // "Company: Title"
     /,\s*([^,]+)$/, // "Title, Company"
@@ -150,7 +140,6 @@ function extractCompanyFromTitle(title?: string): string | undefined {
     const match = title.match(pattern);
     if (match && match[1]) {
       const company = match[1].trim();
-      // Filter out common non-company words
       if (company.length > 2 && !/^(Helsinki|Espoo|Tampere|Oulu|Vantaa|Turku)$/i.test(company)) {
         return company;
       }
@@ -162,11 +151,6 @@ function extractCompanyFromTitle(title?: string): string | undefined {
 
 function extractLocationFromTitle(title?: string): string | undefined {
   if (!title) return undefined;
-  
-  // Extract location from title patterns like:
-  // "Job Title, Helsinki"
-  // "Job Title / Helsinki"
-  // "Job Title (Helsinki)"
   
   const locationPatterns = [
     /,\s*([A-ZÄÖÅ][a-zäöå]+(?:\s+[A-ZÄÖÅ][a-zäöå]+)*)$/, // "Title, Helsinki"
@@ -233,7 +217,7 @@ function analyzeIndeedJobPostings(
       query: params.role,
       country: "fi",
       location: params.location || searchLocation || undefined,
-      fetchedAt: new Date().toISOString(),
+      fetchedAt: new Date(),
       sampleSize: 0,
       totalAvailable: 0,
       requiredSkills: [],
@@ -412,7 +396,7 @@ function analyzeIndeedJobPostings(
     
     return {
       title: item.positionName!, // Already validated above
-      company: item.company?.trim() || undefined,
+      company: item.company?.trim() || "",
       location: item.location?.trim() || searchLocation,
       salary:
         salaryInfo.min || salaryInfo.max
@@ -432,12 +416,12 @@ function analyzeIndeedJobPostings(
     query: params.role,
     country: "fi",
     location: params.location || searchLocation || undefined,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt: new Date(),
     sampleSize,
-    totalAvailable: sampleSize, // Indeed scraper doesn't provide total count, use sample size
+    totalAvailable: sampleSize,
     salary,
     requiredSkills: mapToStats(requiredSkillsMap),
-    niceToHaveSkills: mapToStats(niceToHaveSkillsMap, 8), // Fewer nice-to-have for Finnish
+    niceToHaveSkills: mapToStats(niceToHaveSkillsMap, 8),
     technicalSkills: mapToStats(technicalSkillsMap),
     softSkills: mapToStats(softSkillsMap, 8),
     domainKnowledge: mapToStats(domainMap, 8),
