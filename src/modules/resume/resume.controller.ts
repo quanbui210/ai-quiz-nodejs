@@ -73,7 +73,6 @@ export const uploadResume = async (
       },
     });
 
-    // Increment usage count
     const { incrementResumeCount } = await import("../../utils/usage");
     await incrementResumeCount(req.user.id);
 
@@ -126,7 +125,6 @@ async function processResumeAsync(
 
     await fs.unlink(tempPath).catch(console.error);
 
-    // Update resume with extracted text, but keep status as PROCESSING until analysis completes
     await prisma.resume.update({
       where: { id: resumeId },
       data: {
@@ -143,9 +141,7 @@ async function processResumeAsync(
     if (extractedText.text) {
       console.log(`[Resume Processing] Starting analysis for ${resumeId}...`);
       try {
-        // Wait for analysis to complete
         await analyzeResumeAsync(resumeId, extractedText.text);
-        // Analysis completed successfully, now mark as READY
         await prisma.resume.update({
           where: { id: resumeId },
           data: { status: "READY" },
@@ -209,6 +205,21 @@ async function analyzeResumeAsync(resumeId: string, resumeText: string) {
     });
 
     console.log(`[Resume Analysis] Resume ${resumeId} analyzed successfully. Score: ${analysis.score}`);
+
+    try {
+      console.log(`[Resume Analysis] Generating CV embedding for job matching...`);
+      const { generateEmbedding } = await import("../../utils/embeddings");
+      const embedding = await generateEmbedding(resumeText.substring(0, 8000));
+      
+      await prisma.$executeRaw`
+        UPDATE "Resume"
+        SET "cvEmbedding" = ${JSON.stringify(embedding)}::vector
+        WHERE id = ${resumeId}
+      `;
+      
+    } catch (embeddingError: any) {
+      console.error(`[Resume Analysis]  Failed to generate CV embedding:`, embeddingError.message);
+    }
   } catch (error: any) {
     console.error(`[Resume Analysis] Error details:`, error.message, error.stack);
 
@@ -273,7 +284,6 @@ export const getResume = async (req: AuthenticatedRequest, res: Response) => {
         analysisWeaknesses: true,
         analysisSuggestions: true,
         analyzedAt: true,
-        // Related data
         interviewSessions: {
           select: {
             id: true,
@@ -338,7 +348,6 @@ export const deleteResume = async (
       where: { id: resume.id },
     });
 
-    // Decrement usage count
     const { decrementResumeCount } = await import("../../utils/usage");
     await decrementResumeCount(req.user.id);
 
@@ -385,15 +394,14 @@ export const getResumePreview = async (
       });
     }
 
-    // Generate signed URL (expires in 1 hour) for secure access
     const signedUrl = await getSignedUrl(resume.filePath, 3600);
 
     return res.json({
       previewUrl: signedUrl,
-      publicUrl: getFileUrl(resume.filePath), // Fallback public URL
+      publicUrl: getFileUrl(resume.filePath),
       filename: resume.filename,
       mimeType: resume.mimeType,
-      expiresIn: 3600, // seconds
+      expiresIn: 3600,
     });
   } catch (error: any) {
     console.error("Get resume preview error:", error);
@@ -440,7 +448,6 @@ export const analyzeResumeManually = async (
       });
     }
 
-    // Trigger analysis
     await analyzeResumeAsync(resume.id, resume.parsedText);
 
     const updatedResume = await prisma.resume.findUnique({

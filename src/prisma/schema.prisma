@@ -43,6 +43,7 @@ model User {
   resumes           Resume[]
   interviewSessions InterviewSession[]
   careerGoals       CareerGoal[]
+  jobMatches        UserJobMatch[]
 }
 
 model Topic {
@@ -593,6 +594,7 @@ model Job {
   externalId    String?  @unique // External job ID from Indeed/Apify
   title         String
   company       String?
+  companyLogoUrl String? // Company logo URL from Indeed/Apify
   location      String?  // e.g., "Helsinki, Finland"
   country       String   @default("fi") // Country code
   descriptionRaw String  @db.Text // Full job description text (raw HTML/text)
@@ -635,9 +637,36 @@ model JobAnalysis {
   processedAt       DateTime @default(now())
   
   job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  userMatches UserJobMatch[] // Cached match results
 
   @@index([jobId])
   // Note: Vector index will be created via SQL migration
+}
+
+// Cache user-job match results to avoid recalculating
+model UserJobMatch {
+  id                String   @id @default(uuid())
+  userId            String
+  jobId             String
+  matchScore        Int      // 0-100
+  skillMatchScore   Int      // Skill match component
+  titleMatchScore   Int      // Title/role match component
+  vectorSimilarity  Float    // Vector similarity score
+  experienceMatch   Boolean
+  educationMatch    Boolean
+  languageMatch     Boolean
+  matchExplanation  Json     // Full explanation object
+  calculatedAt      DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobAnalysis JobAnalysis @relation(fields: [jobId], references: [jobId], onDelete: Cascade)
+  
+  @@unique([userId, jobId])
+  @@index([userId])
+  @@index([jobId])
+  @@index([matchScore])
+  @@index([calculatedAt])
 }
 
 model MarketTrends {

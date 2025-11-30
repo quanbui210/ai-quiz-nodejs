@@ -18,6 +18,7 @@ import {
 } from "./career.service";
 
 import { generateRoadmapPDF } from "../../utils/pdf-generator";
+import type { JobMarketInsights } from "../market/finnish-jobs.service";
 
 const isValidEnumValue = <T extends Record<string, string>>(
   enumeration: T,
@@ -284,6 +285,18 @@ export const createCareerGoal = async (
     }
 
     const normalizedTargetRole = targetRole.trim();
+
+    // Normalize country code and location
+    const normalizedCountryCode =
+      typeof targetCountryCode === "string" && targetCountryCode.trim().length > 0
+        ? targetCountryCode.trim().toLowerCase()
+        : null;
+    const normalizedLocation =
+      typeof targetLocation === "string" && targetLocation.trim().length > 0
+        ? targetLocation.trim()
+        : null;
+    const defaultCountryCode =
+      process.env.ADZUNA_DEFAULT_COUNTRY?.trim().toLowerCase() || "fi";
 
     let effectiveCurrentRole =
       typeof currentRole === "string" && currentRole.trim().length > 0
@@ -624,32 +637,11 @@ export const regenerateCareerRoadmap = async (
 
     const goalRecord = goal as any;
 
+   
     let jobMarketInsights: JobMarketInsights | null =
       (goalRecord.jobMarketInsights as JobMarketInsights | null) ?? null;
 
-    if (
-      !jobMarketInsights ||
-      shouldRefreshJobMarketInsights(goalRecord.jobMarketUpdatedAt)
-    ) {
-      try {
-        const refreshed = await fetchAdzunaJobInsights({
-          role: goal.targetRole,
-          location: goalRecord.targetLocation || undefined,
-          country:
-            goalRecord.targetCountryCode ||
-            defaultCountryCode ||
-            undefined,
-        });
-        if (refreshed) {
-          jobMarketInsights = refreshed;
-        }
-      } catch (insightsError) {
-        console.error(
-          "[Career Goal] Failed to refresh Adzuna job insights:",
-          insightsError,
-        );
-      }
-    }
+    
 
     const completedSkills = goal.tasks
       .filter((task) => task.status === TaskStatus.COMPLETED)

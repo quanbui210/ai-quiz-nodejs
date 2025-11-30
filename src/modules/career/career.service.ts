@@ -8,7 +8,7 @@ import {
 
 import { observeOpenAI } from "@langfuse/openai";
 import { trace } from "@opentelemetry/api";
-import type { JobMarketInsights } from "../market/adzuna.service";
+import type { JobMarketInsights } from "../market/finnish-jobs.service";
 
 const DEFAULT_CAREER_MODEL =
   process.env.OPENAI_CAREER_MODEL ||
@@ -479,7 +479,7 @@ export const generateRoadmapPlan = async (
         "roadmap.jobMarket.topRequired": JSON.stringify(
           input.jobMarketInsights.requiredSkills
             .slice(0, 5)
-            .map((skill) => skill.skill),
+            .map((skill: { skill: string; count: number }) => skill.skill),
         ),
       });
     }

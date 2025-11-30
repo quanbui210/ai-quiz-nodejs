@@ -10,10 +10,7 @@
  */
 
 import prisma from "../../utils/prisma";
-import {
-  fetchAdzunaJobInsights,
-  type JobMarketInsights,
-} from "./adzuna.service";
+import type { JobMarketInsights } from "./finnish-jobs.service";
 import { fetchFinnishJobInsights } from "./finnish-jobs.service";
 import { analyzeJobMarketWithAI } from "./market.service";
 
@@ -53,23 +50,15 @@ async function fetchAndStoreInsights(
   try {
     console.log(`[Market Cron] Fetching insights for ${role} in ${location || country} (${country})`);
 
-    const isFinland = country.toLowerCase() === "fi";
-    
-    let jobMarketData: JobMarketInsights | null = null;
-    
-    if (isFinland) {
-      jobMarketData = await fetchFinnishJobInsights({
-        role: role,
-        location: location || undefined,
-        country: "fi",
-      });
-    } else {
-      jobMarketData = await fetchAdzunaJobInsights({
-        role: role,
-        location: location || undefined,
-        country: country,
-      });
+    if (country.toLowerCase() !== "fi") {
+      return;
     }
+    
+    const jobMarketData: JobMarketInsights | null = await fetchFinnishJobInsights({
+      role: role,
+      location: location || undefined,
+      country: "fi",
+    });
 
     if (!jobMarketData) {
       console.warn(
@@ -78,34 +67,33 @@ async function fetchAndStoreInsights(
       return;
     }
 
-    // Generate general AI analysis (not personalized)
     const aiAnalysis = await analyzeJobMarketWithAI({
       jobMarketData: jobMarketData,
-      isGeneral: true, // Generate general insights, not personalized
+      isGeneral: true, 
     });
 
-    // Store in database (upsert)
-    await prisma.marketInsight.upsert({
-      where: {
-        role_location_country: {
-          role: role,
-          location: location || null,
-          country: country,
-        },
-      },
-      create: {
-        role: role,
-        location: location || null,
-        country: country,
-        rawData: jobMarketData as any,
-        analysis: aiAnalysis as any,
-      },
-      update: {
-        rawData: jobMarketData as any,
-        analysis: aiAnalysis as any,
-        fetchedAt: new Date(),
-      },
-    });
+    await prisma.$executeRaw`
+      INSERT INTO "MarketInsight" (
+        "id", "role", "location", "country", "rawData", "analysis", "fetchedAt", "createdAt", "updatedAt"
+      )
+      VALUES (
+        gen_random_uuid(),
+        ${role}::text,
+        ${location || null}::text,
+        ${country}::text,
+        ${JSON.stringify(jobMarketData)}::jsonb,
+        ${JSON.stringify(aiAnalysis)}::jsonb,
+        NOW(),
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT ("role", "location", "country")
+      DO UPDATE SET
+        "rawData" = EXCLUDED."rawData",
+        "analysis" = EXCLUDED."analysis",
+        "fetchedAt" = NOW(),
+        "updatedAt" = NOW()
+    `;
 
     console.log(
       `[Market Cron] ✅ Stored insights for ${role} in ${location || country} (${country})`,

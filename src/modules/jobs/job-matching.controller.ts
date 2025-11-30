@@ -28,8 +28,6 @@ export const matchJobs = async (
       minMatchScore = 5,
     } = req.query;
 
-    // Get user's resume
-    // @ts-ignore - Prisma client will be regenerated after schema migration
     const resume = await (prisma as any).resume.findFirst({
       where: {
         userId: req.user.id,
@@ -47,7 +45,6 @@ export const matchJobs = async (
       });
     }
 
-    // Get or generate CV embedding
     let cvEmbedding = await getUserCVEmbedding(req.user.id);
     if (!cvEmbedding) {
       console.log("[Job Matching] Generating CV embedding...");
@@ -57,13 +54,13 @@ export const matchJobs = async (
       );
     }
 
-    // Get user skills from resume or profile
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
         currentSkills: true,
         yearsOfExperience: true,
         industry: true,
+        currentPosition: true, 
       },
     });
 
@@ -71,18 +68,24 @@ export const matchJobs = async (
       ? resume.extractedSkills
       : user?.currentSkills || [];
 
-    // Match jobs
+    if (!resume.parsedText || resume.parsedText.trim().length === 0) {
+    } else {
+      console.log(`[Job Matching] CV text available (${resume.parsedText.length} chars)`);
+    }
+
     const matches = await matchJobsToUser({
       userId: req.user.id,
-      cvEmbedding,
+      cvEmbedding: cvEmbedding || [],
+      cvText: resume.parsedText && resume.parsedText.trim().length > 0 ? resume.parsedText : undefined,
       userSkills,
       userExperienceYears: resume.yearsOfExperience || user?.yearsOfExperience || undefined,
       userEducationLevel: resume.educationLevel || undefined,
-      userLanguages: ["Finnish", "English"], // Default for Finland, can be enhanced
+      userLanguages: ["Finnish", "English"],
+      userCurrentPosition: user?.currentPosition || undefined,
       location: typeof location === "string" ? location : undefined,
       role: typeof role === "string" ? role : undefined,
       limit: typeof limit === "string" ? parseInt(limit, 10) : 20,
-      minMatchScore: typeof minMatchScore === "string" ? parseInt(minMatchScore, 10) : 20, // Lower default threshold for more matches
+      minMatchScore: typeof minMatchScore === "string" ? parseInt(minMatchScore, 10) : 20,
     });
 
     return res.json({
@@ -140,12 +143,10 @@ export const getRecentJobs = async (
       };
     }
 
-    // Get all recent jobs with full data
-    // @ts-ignore - Prisma client will be regenerated after schema migration
     const jobs = await (prisma as any).job.findMany({
       where: whereClause,
       include: {
-        analysis: true, // Include full analysis
+        analysis: true,
       },
       orderBy: {
         postedDate: "desc",
@@ -153,8 +154,6 @@ export const getRecentJobs = async (
       take: typeof limit === "string" ? parseInt(limit, 10) : 30,
     });
 
-    // Check if user has CV for matching
-    // @ts-ignore
     const resume = await (prisma as any).resume.findFirst({
       where: {
         userId: req.user.id,
@@ -167,11 +166,13 @@ export const getRecentJobs = async (
 
     let matchData: Map<string, any> = new Map();
     let userProfile: any = null;
+    let requiresResume = false;
 
-    // If user has CV, calculate match scores for all jobs
-    if (resume && resume.parsedText) {
+    if (!resume || !resume.parsedText || resume.parsedText.trim().length === 0) {
+      requiresResume = true;
+      console.log("[Recent Jobs] No resume found or resume has no parsed text - skipping job matching");
+    } else if (resume && resume.parsedText) {
       try {
-        // Get or generate CV embedding
         let cvEmbedding = await getUserCVEmbedding(req.user.id);
         if (!cvEmbedding) {
           console.log("[Recent Jobs] Generating CV embedding for matching...");
@@ -181,13 +182,13 @@ export const getRecentJobs = async (
           );
         }
 
-        // Get user profile data
         const user = await prisma.user.findUnique({
           where: { id: req.user.id },
           select: {
             currentSkills: true,
             yearsOfExperience: true,
             industry: true,
+            currentPosition: true, 
           },
         });
 
@@ -199,24 +200,31 @@ export const getRecentJobs = async (
           skills: userSkills,
           experienceYears: resume.yearsOfExperience || user?.yearsOfExperience,
           educationLevel: resume.educationLevel,
+          currentPosition: user?.currentPosition,
         };
 
-        // Match all jobs (with lower threshold to get more matches)
         if (cvEmbedding) {
+          if (!resume.parsedText || resume.parsedText.trim().length === 0) {
+            console.log("[Recent Jobs]  Warning: resume.parsedText is missing or empty");
+          } else {
+            console.log(`[Recent Jobs]  CV text available (${resume.parsedText.length} chars)`);
+          }
+
           const matches = await matchJobsToUser({
             userId: req.user.id,
             cvEmbedding,
+            cvText: resume.parsedText && resume.parsedText.trim().length > 0 ? resume.parsedText : undefined,
             userSkills,
             userExperienceYears: resume.yearsOfExperience || user?.yearsOfExperience || undefined,
             userEducationLevel: resume.educationLevel || undefined,
             userLanguages: ["Finnish", "English"],
+            userCurrentPosition: user?.currentPosition || undefined,
             location: typeof location === "string" ? location : undefined,
             role: typeof role === "string" ? role : undefined,
-            limit: 100, // Get matches for all jobs
-            minMatchScore: 0, // No minimum - include all matches for sorting
+            limit: 100, 
+            minMatchScore: 0, 
           });
 
-          // Create map of jobId -> match data
           for (const match of matches) {
             matchData.set(match.job.id, {
               matchScore: match.matchScore,
@@ -227,20 +235,19 @@ export const getRecentJobs = async (
               matchExplanation: match.matchExplanation,
             });
           }
-        }
-      } catch (error) {
+          }
+        } catch (error) {
         console.error("[Recent Jobs] Failed to calculate matches:", error);
-        // Continue without matching - just return jobs without match data
       }
     }
 
-    // Format jobs with full data and match info
     const jobsWithMatches = jobs.map((job: any) => {
       const match = matchData.get(job.id);
       const baseJob = {
         id: job.id,
         title: job.title,
         company: job.company,
+        companyLogoUrl: job.companyLogoUrl || null,
         location: job.location,
         url: job.url,
         postedDate: job.postedDate,
@@ -251,9 +258,7 @@ export const getRecentJobs = async (
         jobType: job.jobType || [],
         experienceLevel: job.experienceLevel,
         role: job.role,
-        // Full job description
         description: job.descriptionRaw,
-        // Analysis data
         analysis: job.analysis ? {
           mustHaveSkills: job.analysis.mustHaveSkills || [],
           niceToHaveSkills: job.analysis.niceToHaveSkills || [],
@@ -284,14 +289,12 @@ export const getRecentJobs = async (
       };
     });
 
-    // Sort: matched jobs first (by match score), then unmatched (by posted date)
     jobsWithMatches.sort((a: any, b: any) => {
       if (a.isMatched && !b.isMatched) return -1;
       if (!a.isMatched && b.isMatched) return 1;
       if (a.isMatched && b.isMatched) {
         return (b.matchScore || 0) - (a.matchScore || 0);
       }
-      // Both unmatched, sort by posted date
       const dateA = a.postedDate ? new Date(a.postedDate).getTime() : 0;
       const dateB = b.postedDate ? new Date(b.postedDate).getTime() : 0;
       return dateB - dateA;
@@ -301,7 +304,8 @@ export const getRecentJobs = async (
       jobs: jobsWithMatches,
       total: jobsWithMatches.length,
       hasMatches: matchData.size > 0,
-      userProfile: userProfile, // Include user profile if CV exists
+      requiresResume: requiresResume,
+      userProfile: userProfile,
     });
   } catch (error: any) {
     console.error("[Recent Jobs] Error:", error);

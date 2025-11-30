@@ -1,9 +1,9 @@
 import { ApifyClient } from "apify-client";
 import prisma from "../../utils/prisma";
 
-// Use borderline/indeed-scraper for full job descriptions
 const APIFY_ACTOR_ID = "borderline/indeed-scraper";
 const APIFY_MAX_ITEMS = 50;
+const JOB_SCRAPE_NUMBER = parseInt(process.env.JOB_SCRAPE_NUMBER || "30", 10);
 
 // Popular tech roles to scrape
 export const POPULAR_TECH_ROLES = [
@@ -37,6 +37,7 @@ interface IndeedJobItem {
   jobKey?: string; // External ID (e.g., "ac9d0fdfecaf55b8")
   title?: string; // Job title
   companyName?: string; // Company name
+  companyLogoUrl?: string; // Company logo URL
   location?: {
     city?: string;
     country?: string;
@@ -168,39 +169,48 @@ async function scrapeIndeedJobs(
   params: ScrapeJobParams,
 ): Promise<IndeedJobItem[]> {
   const { role, location = "Helsinki", country = "fi", maxItems = APIFY_MAX_ITEMS, daysBack = 14 } = params;
-  
-  // Cap at 30 jobs max
-  const maxRows = Math.min(maxItems || APIFY_MAX_ITEMS, 30);
+
+  const maxRows = Math.min(maxItems || APIFY_MAX_ITEMS, JOB_SCRAPE_NUMBER);
   
   console.log(`[Job Scraper] Scraping "${role}" in "${location}" (${country}) - max ${maxRows} jobs`);
   
   try {
-    const run = await client.actor(APIFY_ACTOR_ID).call({
-      query: role, // Use 'query' (singular) not 'queries'
+    const scrapePromise = client.actor(APIFY_ACTOR_ID).call({
+      query: role, 
       location: location,
       country: country.toLowerCase(),
       maxRows: maxRows,
       fromDays: String(daysBack), 
     });
     
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Apify scrape timeout after 5 minutes")), 300000);
+    });
+    
+    const run = await Promise.race([scrapePromise, timeoutPromise]) as any;
+    
+    if (run.status && run.status !== "SUCCEEDED") {
+      console.warn(`[Job Scraper] Apify run for "${role}" in "${location}" did not succeed. Status: ${run.status}`);
+      return []; 
+    }
+    
     const { items } = await client.dataset(run.defaultDatasetId).listItems();
     
     console.log(`[Job Scraper] Found ${items.length} jobs for "${role}" in "${location}"`);
     
-    // Debug: Log first item structure to see what we're getting
     if (items.length > 0) {
       const firstItem = items[0];
       console.log(`[Job Scraper] 🔍 Sample item keys:`, Object.keys(firstItem || {}));
       console.log(`[Job Scraper] 🔍 Sample item (first 800 chars):`, JSON.stringify(firstItem, null, 2).substring(0, 800));
       console.log(`[Job Scraper] 🔍 Key fields check:`, {
-        hasJobKey: !!firstItem?.jobKey, // Primary external ID
-        hasTitle: !!firstItem?.title, // Job title
-        hasCompanyName: !!firstItem?.companyName, // Company
-        hasJobUrl: !!firstItem?.jobUrl, // Job URL
-        hasDescriptionText: !!firstItem?.descriptionText, // Description
-        hasDatePublished: !!firstItem?.datePublished, // ISO date
-        hasAge: !!firstItem?.age, // Relative date
-        hasLocation: !!firstItem?.location, // Location object
+        hasJobKey: !!firstItem?.jobKey, 
+        hasTitle: !!firstItem?.title, 
+        hasCompanyName: !!firstItem?.companyName, 
+        hasJobUrl: !!firstItem?.jobUrl, 
+        hasDescriptionText: !!firstItem?.descriptionText, 
+        hasDatePublished: !!firstItem?.datePublished, 
+        hasAge: !!firstItem?.age, 
+        hasLocation: !!firstItem?.location, 
       });
     }
     
@@ -211,9 +221,6 @@ async function scrapeIndeedJobs(
   }
 }
 
-/**
- * Store scraped jobs in database
- */
 async function storeJobs(
   jobs: IndeedJobItem[],
   params: ScrapeJobParams,
@@ -230,7 +237,6 @@ async function storeJobs(
   
   for (const job of jobs) {
     try {
-      // Parse posted date - Apify provides `datePublished` (ISO format) and `age` (relative)
       const postedDate = parsePostedDate(
         job.datePublished || // Primary: ISO format "2025-11-21"
         job.age || // Fallback: relative "8 days ago"
@@ -248,7 +254,6 @@ async function storeJobs(
         continue;
       }
       
-      // Extract external ID - Apify uses `jobKey` as the primary ID
       const jobUrl = job.jobUrl || job.url || job.link || job.jobLink;
       const externalId = 
         job.jobKey || // Primary: Apify uses jobKey (e.g., "ac9d0fdfecaf55b8")
@@ -267,9 +272,8 @@ async function storeJobs(
         })() : null);
       
       if (!externalId) {
-        // Only log first few to avoid spam
         if (skippedNoIdCount < 3) {
-          console.warn(`[Job Scraper] ⚠️  Skipping job without external ID. Sample:`, {
+          console.warn(`[Job Scraper] Skipping job without external ID. Sample:`, {
             title: job.title || job.jobTitle || job.name || "Unknown",
             jobKey: job.jobKey || "MISSING",
             url: jobUrl || "No URL",
@@ -319,6 +323,7 @@ async function storeJobs(
       // Store job - use Apify's actual field names (jobUrl already declared above)
       const jobTitle = job.title || job.jobTitle || job.name || "Untitled";
       const jobCompany = job.companyName || job.company || job.employer || null;
+      const companyLogoUrl = job.companyLogoUrl || job.companyLogo || job.logoUrl || null;
       
       // Location can be object or string
       let jobLocation: string | null = null;
@@ -349,6 +354,7 @@ async function storeJobs(
           externalId,
           title: jobTitle,
           company: jobCompany,
+          companyLogoUrl: companyLogoUrl || null,
           location: jobLocation,
           country: country.toLowerCase(),
           descriptionRaw: jobDescription,
@@ -374,9 +380,8 @@ async function storeJobs(
     `[Job Scraper] ✅ Stored ${storedCount} jobs, skipped ${skippedCount} total`,
   );
   
-  // Log skip reasons (if any)
   if (skippedCount > 0 && storedCount === 0) {
-    console.log(`[Job Scraper] ⚠️  All jobs skipped! Checking first job for debugging...`);
+    console.log(`[Job Scraper] All jobs skipped! Checking first job for debugging...`);
     if (jobs.length > 0) {
       const firstJob = jobs[0];
       console.log(`[Job Scraper] Sample job: "${firstJob?.jobTitle}"`);
@@ -425,7 +430,7 @@ export async function scrapeAndStoreJobs(
   console.log(`[Job Scraper] Storing ${jobs.length} jobs to database...`);
   const stored = await storeJobs(jobs, params);
   
-  console.log(`[Job Scraper] ✅ Stored ${stored} jobs, skipped ${jobs.length - stored} (duplicates/old)`);
+  console.log(`[Job Scraper] Stored ${stored} jobs, skipped ${jobs.length - stored} (duplicates/old)`);
   
   return {
     stored,
@@ -433,18 +438,50 @@ export async function scrapeAndStoreJobs(
   };
 }
 
-/**
- * Scrape multiple roles and locations (for cron job)
- */
+
+async function deleteOldJobs(daysToKeep: number = 30): Promise<number> {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - daysToKeep);
+  
+  // @ts-ignore - Prisma client will be regenerated after schema migration
+  const result = await (prisma as any).job.deleteMany({
+    where: {
+      OR: [
+        {
+          postedDate: {
+            lt: cutoffDate,
+          },
+        },
+        {
+          // Also delete jobs scraped more than 60 days ago (stale data)
+          scrapedAt: {
+            lt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+          },
+        },
+      ],
+    },
+  });
+  
+  console.log(`[Job Scraper] Deleted ${result.count} old jobs (older than ${daysToKeep} days)`);
+  return result.count;
+}
+
 export async function scrapePopularJobs(
   roles: string[] = POPULAR_TECH_ROLES,
   locations: string[] = POPULAR_LOCATIONS,
   daysBack: number = 14, // Default: last 14 days
-): Promise<{ totalStored: number; totalSkipped: number }> {
+  deleteOldJobsFirst: boolean = true,
+): Promise<{ totalStored: number; totalSkipped: number; deletedOld: number }> {
   const apiToken = process.env.APIFY_API_TOKEN;
   
   if (!apiToken) {
     throw new Error("APIFY_API_TOKEN is not configured");
+  }
+  
+  // Step 0: Delete old jobs first (optional, but recommended)
+  let deletedCount = 0;
+  if (deleteOldJobsFirst) {
+    deletedCount = await deleteOldJobs(daysBack + 7); // Keep jobs from last N+7 days
   }
   
   const client = new ApifyClient({
@@ -454,28 +491,43 @@ export async function scrapePopularJobs(
   let totalStored = 0;
   let totalSkipped = 0;
   
-  console.log(`[Job Scraper] Starting batch scrape for ${roles.length} roles × ${locations.length} locations`);
+  const totalCombinations = roles.length * locations.length;
+  let currentCombination = 0;
+  
+  console.log(`[Job Scraper] Starting batch scrape for ${roles.length} roles × ${locations.length} locations = ${totalCombinations} combinations`);
+  console.log(`[Job Scraper] Estimated time: ~${Math.ceil(totalCombinations * 0.5)} minutes (30 seconds per combination)`);
   
   for (const role of roles) {
     for (const location of locations) {
+      currentCombination++;
+      const startTime = Date.now();
+      
       try {
+        console.log(`[Job Scraper] [${currentCombination}/${totalCombinations}] Scraping "${role}" in "${location}"...`);
+        
         const result = await scrapeAndStoreJobs({
           role,
           location,
           country: "fi",
           daysBack,
-          maxItems: 30, // Explicitly set to 30
+          maxItems: JOB_SCRAPE_NUMBER,
         });
         
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         totalStored += result.stored;
         totalSkipped += result.skipped;
         
+        console.log(`[Job Scraper] [${currentCombination}/${totalCombinations}] Completed "${role}" in "${location}" in ${duration}s (stored: ${result.stored}, skipped: ${result.skipped})`);
+        
+        // Small delay between scrapes to avoid overwhelming Apify
         await new Promise((resolve) => setTimeout(resolve, 2000));
       } catch (error) {
+        const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         console.error(
-          `[Job Scraper] Error scraping ${role} in ${location}:`,
+          `[Job Scraper] [${currentCombination}/${totalCombinations}] ❌ Error scraping "${role}" in "${location}" after ${duration}s:`,
           error instanceof Error ? error.message : String(error),
         );
+        // Continue with next combination instead of stopping
       }
     }
   }
@@ -484,6 +536,6 @@ export async function scrapePopularJobs(
     `[Job Scraper] Batch scrape complete: ${totalStored} stored, ${totalSkipped} skipped`,
   );
   
-  return { totalStored, totalSkipped };
+  return { totalStored, totalSkipped, deletedOld: deletedCount };
 }
 

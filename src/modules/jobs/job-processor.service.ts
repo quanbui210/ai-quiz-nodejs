@@ -148,10 +148,7 @@ export async function processJobWithAI(jobId: string): Promise<void> {
     throw new Error(`Job not found: ${jobId}`);
   }
 
-  if (job.isProcessed) {
-    console.log(`[Job Processor] Job ${jobId} already processed, skipping`);
-    return;
-  }
+  // Note: We allow reprocessing - if job is already processed, we'll replace the analysis
 
   if (!job.descriptionRaw || job.descriptionRaw.trim().length < 50) {
     console.warn(`[Job Processor] Job ${jobId} has no description, skipping`);
@@ -171,8 +168,7 @@ export async function processJobWithAI(jobId: string): Promise<void> {
       job.descriptionRaw.substring(0, 8000),
     );
 
-    // Store analysis using raw SQL since Prisma client needs regeneration
-    // Format embedding as PostgreSQL array string for pgvector: [0.1, 0.2, ...]
+
     const embeddingArray = `[${embedding.join(',')}]`;
     
     await prisma.$executeRaw`
@@ -208,7 +204,7 @@ export async function processJobWithAI(jobId: string): Promise<void> {
       `[Job Processor] ✅ Processed job ${jobId}: ${mustHaveSkills.length} must-have, ${niceToHaveSkills.length} nice-to-have skills`,
     );
   } catch (error) {
-    console.error(`[Job Processor] ❌ Error processing job ${jobId}:`, error);
+    console.error(`[Job Processor] Error processing job ${jobId}:`, error);
     throw error;
   }
 }
@@ -264,5 +260,68 @@ export async function processUnprocessedJobs(
   );
 
   return { processed, failed };
+}
+
+/**
+ * Reprocess jobs (already processed or all jobs)
+ * Use this to refresh job analysis with updated AI prompts
+ */
+export async function reprocessJobs(
+  limit: number = 50,
+  forceAll: boolean = false,
+): Promise<{ processed: number; failed: number }> {
+  if (forceAll) {
+    // Mark all jobs as unprocessed and delete existing analyses
+    console.log("[Job Processor] Marking all jobs as unprocessed...");
+    
+    // Delete all job analyses
+    await prisma.$executeRaw`DELETE FROM "JobAnalysis"`;
+    
+    // Mark all jobs as unprocessed
+    // @ts-ignore - Prisma client will be regenerated after schema migration
+    await (prisma as any).job.updateMany({
+      data: {
+        isProcessed: false,
+        processedAt: null,
+      },
+    });
+    
+    console.log("[Job Processor] All jobs marked for reprocessing");
+  } else {
+    // Only reprocess already processed jobs
+    console.log("[Job Processor] Marking processed jobs for reprocessing...");
+    
+    // Delete analyses for processed jobs
+    // @ts-ignore
+    const processedJobs = await (prisma as any).job.findMany({
+      where: { isProcessed: true },
+      select: { id: true },
+      take: limit * 2, // Get more to account for filtering
+    });
+    
+    if (processedJobs.length > 0) {
+      const jobIds = processedJobs.map((j: any) => j.id);
+      await prisma.$executeRaw`
+        DELETE FROM "JobAnalysis"
+        WHERE "jobId" = ANY(${jobIds}::uuid[])
+      `;
+      
+      // @ts-ignore
+      await (prisma as any).job.updateMany({
+        where: {
+          id: { in: jobIds },
+        },
+        data: {
+          isProcessed: false,
+          processedAt: null,
+        },
+      });
+      
+      console.log(`[Job Processor] ${processedJobs.length} processed jobs marked for reprocessing`);
+    }
+  }
+  
+  // Now process the unprocessed jobs
+  return await processUnprocessedJobs(limit);
 }
 

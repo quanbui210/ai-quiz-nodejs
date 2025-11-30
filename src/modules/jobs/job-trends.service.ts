@@ -292,18 +292,22 @@ Your task is to analyze the provided market statistics and generate:
 
 CRITICAL RULES:
 - Base ALL insights on the provided data (percentages, counts, salary ranges)
-- Combine data with your domain knowledge of industry trends
+- **IMPORTANT: Use your internal knowledge about the current economic situation in Finland (as of your knowledge cutoff)**
+- **Consider broader economic context**: Finland's economy has been facing challenges, with slower growth, high inflation, and a more competitive job market. Finding tech jobs may be more difficult than in previous years.
+- **Provide realistic market assessment**: If there are only a few jobs (e.g., <50), note that the market is competitive and finding positions may be challenging. Be honest about market conditions.
+- Combine data with your domain knowledge of industry trends and economic conditions
 - Be specific and actionable in recommendations
 - Identify emerging skills (growing in demand) vs declining skills
-- Provide realistic salary insights based on the data
+- Provide realistic salary insights based on the data AND current economic conditions
 - Keep insights general (not personalized) - this is for all users
 - Use actual numbers from the data when making claims
 - Consider regional context (Finland for "fi" country code)
+- **Market Reality Check**: If total jobs are low , emphasize that the market is competitive and candidates should be prepared for a longer job search, focus on skill development, and consider expanding their search criteria
 
 Return JSON with this EXACT structure:
 {
-  "summary": "2-3 sentence overview of the job market, including demand level and key characteristics",
-  "trendOverview": "3-5 sentences or bullet points describing current market trends. Focus on: job availability (many jobs = good market, few jobs = challenging), skill demand patterns, salary trends, and overall market health. Use actual numbers from the data (e.g., 'With X jobs posted in the past 14 days...'). Format as paragraphs or bullet points.",
+  "summary": "2-3 sentence overview of the job market, including demand level, key characteristics, AND realistic assessment of job search difficulty based on both the data AND current economic conditions in Finland. Be honest about market competitiveness.",
+  "trendOverview": "3-5 sentences or bullet points describing current market trends. Focus on: job availability (many jobs = good market, few jobs = challenging), skill demand patterns, salary trends, overall market health, AND the broader economic context in Finland. Use actual numbers from the data (e.g., 'With X jobs posted in the past 14 days...'). Include realistic assessment of job search difficulty - if jobs are few, note that the market is competitive and finding positions may take longer. Format as paragraphs or bullet points.",
   "demandLevel": "HIGH" | "MEDIUM" | "LOW",
   "growthTrend": "GROWING" | "STABLE" | "DECLINING",
   "keyInsights": ["insight 1", "insight 2", "insight 3", "insight 4", "insight 5"], // 3-5 key market insights (bullet points)
@@ -336,6 +340,13 @@ Respond ONLY with valid JSON, no markdown, no code blocks.`,
         role: "user",
         content: `Analyze this job market data for ${context.role} in ${context.location}, ${context.country}:
 
+**IMPORTANT CONTEXT:**
+- Consider the current economic situation in Finland (as of your knowledge cutoff)
+- Finland's economy has been facing challenges: slower growth, and a more competitive job market
+- Tech job market is more challenging than in previous years
+- Be realistic about job search difficulty - if there are few jobs (e.g., <30), note that competition is high and finding positions may take longer
+
+**JOB MARKET DATA:**
 Total Jobs: ${context.totalJobs}
 Average Experience Required: ${context.averageExperience ? `${context.averageExperience} years` : "Not specified"}
 
@@ -376,9 +387,6 @@ Generate comprehensive market analysis with insights, trends, and recommendation
   }
 }
 
-/**
- * Store market trends in database
- */
 export async function storeMarketTrends(
   country: string = "fi",
   location?: string,
@@ -391,20 +399,16 @@ export async function storeMarketTrends(
   if (trends.totalJobs > 0) {
     try {
       aiAnalysis = await analyzeMarketTrendsWithAI(trends, country, location, role);
-      console.log(`[Market Trends] ✅ Generated AI analysis for ${role || "all roles"} in ${location || "all locations"}`);
+      console.log(`[Market Trends] Generated AI analysis for ${role || "all roles"} in ${location || "all locations"}`);
     } catch (error) {
-      console.error("[Market Trends] ❌ Failed to generate AI analysis:", error);
-      // Continue without AI analysis - store raw trends anyway
+      console.error("[Market Trends] Failed to generate AI analysis:", error);
     }
   }
 
   const periodStart = new Date();
-  periodStart.setDate(1); // Start of current month
+  periodStart.setDate(1); 
   const periodEnd = new Date();
 
-  // Use raw SQL since Prisma client needs regeneration
-  // Store AI analysis in salaryStats JSONB field temporarily (we'll add a dedicated column later)
-  // For now, we'll store it in a way that doesn't break existing structure
   await prisma.$executeRaw`
     INSERT INTO "MarketTrends" (
       "id", "country", "location", "role", "periodStart", "periodEnd",

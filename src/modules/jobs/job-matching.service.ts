@@ -1,5 +1,16 @@
 import prisma from "../../utils/prisma";
 import { generateEmbedding } from "../../utils/embeddings";
+import OpenAI from "openai";
+import { observeOpenAI } from "@langfuse/openai";
+
+const openai = observeOpenAI(
+  new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  }),
+);
+
+// Use gpt-3.5-turbo for job matching to avoid rate limits (higher TPM limits)
+const DEFAULT_MODEL = process.env.OPENAI_JOB_MATCHING_MODEL || "gpt-3.5-turbo";
 
 interface JobMatchResult {
   job: {
@@ -38,12 +49,14 @@ interface JobMatchResult {
     recommendations: string[];
     experienceAnalysis?: string;
     skillAnalysis?: string;
+    titleMatch?: string;
   };
 }
 
 interface MatchJobsParams {
   userId: string;
   cvEmbedding: number[];
+  cvText?: string; // CV text content for LLM analysis
   userSkills: string[];
   userExperienceYears?: number;
   userEducationLevel?: string;
@@ -56,253 +69,257 @@ interface MatchJobsParams {
 }
 
 /**
- * Calculate skill match score
+ * Analyze job match using LLM
+ * This replaces manual scoring with AI-powered analysis
  */
-function calculateSkillMatchScore(
-  userSkills: string[],
-  mustHaveSkills: string[],
-  niceToHaveSkills: string[],
-): {
-  score: number;
-  matchingMustHave: string[];
-  missingMustHave: string[];
-  matchingNiceToHave: string[];
-  missingNiceToHave: string[];
-} {
-  const userSkillsLower = new Set(userSkills.map((s) => s.toLowerCase().trim()));
-  
-  // Normalize skill names for comparison
-  const normalizeSkill = (skill: string) => skill.toLowerCase().trim();
-  
-  const matchingMustHave = mustHaveSkills.filter((skill) =>
-    userSkillsLower.has(normalizeSkill(skill)),
-  );
-  const missingMustHave = mustHaveSkills.filter(
-    (skill) => !userSkillsLower.has(normalizeSkill(skill)),
-  );
-  
-  const matchingNiceToHave = niceToHaveSkills.filter((skill) =>
-    userSkillsLower.has(normalizeSkill(skill)),
-  );
-  const missingNiceToHave = niceToHaveSkills.filter(
-    (skill) => !userSkillsLower.has(normalizeSkill(skill)),
-  );
-  
-  // Calculate score (less strict):
-  // - Must-have skills: 60% weight
-  // - Nice-to-have skills: 40% weight
-  // - Less penalty for missing skills (encourage more matches)
-  const mustHaveWeight = 0.6;
-  const niceToHaveWeight = 0.4;
-  
-  const mustHaveScore = mustHaveSkills.length > 0
-    ? (matchingMustHave.length / mustHaveSkills.length) * 100
-    : 70; // If no must-have skills, give higher neutral score
-  
-  const niceToHaveScore = niceToHaveSkills.length > 0
-    ? (matchingNiceToHave.length / niceToHaveSkills.length) * 100
-    : 70;
-  
-  const baseScore = mustHaveScore * mustHaveWeight + niceToHaveScore * niceToHaveWeight;
-  
-  // Reduced penalty for missing skills (max 20% instead of 30%)
-  // Only penalize if missing more than 50% of must-have skills
-  const missingRatio = mustHaveSkills.length > 0 
-    ? missingMustHave.length / mustHaveSkills.length 
-    : 0;
-  const penalty = missingRatio > 0.5 ? Math.min(missingMustHave.length * 3, 20) : 0;
-  
-  const finalScore = Math.max(0, Math.min(100, baseScore - penalty));
-  
-  return {
-    score: Math.round(finalScore),
-    matchingMustHave,
-    missingMustHave,
-    matchingNiceToHave,
-    missingNiceToHave,
-  };
-}
-
-/**
- * Generate detailed match explanation
- */
-function generateMatchExplanation(params: {
+async function analyzeJobMatchWithLLM(params: {
   job: any;
+  cvText?: string; // CV text content for detailed analysis
   userSkills: string[];
-  userExperienceYears: number | undefined;
-  userEducationLevel: string | undefined;
+  userExperienceYears?: number;
+  userEducationLevel?: string;
   userLanguages: string[];
   userCurrentPosition?: string;
-  skillMatch: ReturnType<typeof calculateSkillMatchScore>;
+  vectorSimilarity: number;
+}): Promise<{
+  matchScore: number; // 0-100
+  skillMatch: {
+    score: number;
+    matchingMustHave: string[];
+    missingMustHave: string[];
+    matchingNiceToHave: string[];
+    missingNiceToHave: string[];
+  };
   experienceMatch: boolean;
-  experienceScore: number;
   educationMatch: boolean;
   languageMatch: boolean;
-  finalScore: number;
-}): {
-  summary: string;
-  strengths: string[];
-  gaps: string[];
-  recommendations: string[];
-  experienceAnalysis?: string;
-  skillAnalysis?: string;
-  titleMatch?: string;
-} {
+  matchExplanation: {
+    summary: string;
+    strengths: string[];
+    gaps: string[];
+    recommendations: string[];
+    experienceAnalysis?: string;
+    skillAnalysis?: string;
+    titleMatch?: string;
+  };
+}> {
   const {
     job,
+    cvText,
     userSkills,
     userExperienceYears,
     userEducationLevel,
     userLanguages,
     userCurrentPosition,
-    skillMatch,
-    experienceMatch,
-    experienceScore,
-    educationMatch,
-    languageMatch,
-    finalScore,
+    vectorSimilarity,
   } = params;
 
-  const strengths: string[] = [];
-  const gaps: string[] = [];
-  const recommendations: string[] = [];
-
-  // Job title/role matching analysis
-  let titleMatch: string | undefined;
-  if (userCurrentPosition && job.title) {
-    const userTitleLower = userCurrentPosition.toLowerCase();
-    const jobTitleLower = job.title.toLowerCase();
-    
-    // Check for exact or similar matches
-    const isExactMatch = userTitleLower === jobTitleLower;
-    const isSimilarMatch = 
-      userTitleLower.includes(jobTitleLower) || 
-      jobTitleLower.includes(userTitleLower) ||
-      // Check for role category matches (e.g., both are "Engineer", "Manager", "Developer")
-      (userTitleLower.includes("engineer") && jobTitleLower.includes("engineer")) ||
-      (userTitleLower.includes("developer") && jobTitleLower.includes("developer")) ||
-      (userTitleLower.includes("manager") && jobTitleLower.includes("manager")) ||
-      (userTitleLower.includes("architect") && jobTitleLower.includes("architect"));
-    
-    // Check for role level mismatches (e.g., "Manager" vs "Engineer")
-    const isRoleMismatch = 
-      (userTitleLower.includes("manager") && !jobTitleLower.includes("manager") && !jobTitleLower.includes("lead")) ||
-      (jobTitleLower.includes("manager") && !userTitleLower.includes("manager") && !userTitleLower.includes("lead")) ||
-      (userTitleLower.includes("senior") && jobTitleLower.includes("junior")) ||
-      (jobTitleLower.includes("senior") && userTitleLower.includes("junior"));
-    
-    if (isRoleMismatch) {
-      titleMatch = `Role mismatch: This is a ${job.title} position, while your current role is ${userCurrentPosition}. These are different career paths.`;
-      gaps.push(`Role mismatch: ${job.title} vs your current ${userCurrentPosition}`);
-      recommendations.push(`Consider if you're interested in transitioning to this type of role, or look for positions matching your current role`);
-    } else if (isExactMatch || isSimilarMatch) {
-      titleMatch = `Good role alignment: This ${job.title} position aligns with your current role as ${userCurrentPosition}.`;
-      strengths.push(`Role alignment: ${job.title} matches your current position`);
-    } else {
-      titleMatch = `Role comparison: This is a ${job.title} position, while your current role is ${userCurrentPosition}.`;
-    }
-  } else if (job.title) {
-    titleMatch = `This is a ${job.title} position.`;
-  }
-
-  // Experience analysis (more lenient - 1-2 years is minor, not significant)
-  let experienceAnalysis: string | undefined;
-  if (job.analysis.experienceYears && userExperienceYears !== undefined) {
-    const experienceGap = job.analysis.experienceYears - userExperienceYears;
-    
-    if (userExperienceYears >= job.analysis.experienceYears) {
-      experienceAnalysis = `You have ${userExperienceYears} years of experience, which meets the requirement of ${job.analysis.experienceYears}+ years.`;
-      strengths.push(`Meets experience requirement (${userExperienceYears} years)`);
-    } else if (experienceGap <= 1) {
-      // 1 year or less gap = very minor
-      experienceAnalysis = `You have ${userExperienceYears} years of experience, while this role typically requires ${job.analysis.experienceYears} years. This is a very minor gap and should not be a concern.`;
-      strengths.push(`Close to experience requirement (${userExperienceYears} vs ${job.analysis.experienceYears} years)`);
-    } else if (experienceGap <= 2) {
-      // 2 years gap = minor
-      experienceAnalysis = `You have ${userExperienceYears} years of experience, while this role typically requires ${job.analysis.experienceYears} years. This is a minor gap.`;
-      // Don't add to gaps for minor differences
-    } else if (experienceGap <= 3) {
-      // 3 years gap = moderate
-      experienceAnalysis = `You have ${userExperienceYears} years of experience, while this role typically requires ${job.analysis.experienceYears} years. You're close to the requirement.`;
-      // Don't add to gaps, just note it
-    } else {
-      // 4+ years gap = significant
-      experienceAnalysis = `You have ${userExperienceYears} years of experience, while this role typically requires ${job.analysis.experienceYears} years. This is a notable gap.`;
-      gaps.push(`Experience gap: ${experienceGap} more years typically expected`);
-      recommendations.push(`Consider highlighting transferable experience, relevant projects, or certifications to compensate for the experience gap`);
-    }
-  } else if (job.analysis.experienceYears) {
-    experienceAnalysis = `This role typically requires ${job.analysis.experienceYears} years of experience. Your experience level is not specified.`;
+  if (!cvText || cvText.trim().length === 0) {
+    console.log(`[Job Matching] CV text is missing or empty for job ${job.id}`);
   } else {
-    experienceAnalysis = `No specific experience requirement listed for this role.`;
+    console.log(`[Job Matching] CV text provided (${cvText.length} chars) for job ${job.id}`);
   }
 
-  // Skill analysis
-  let skillAnalysis: string | undefined;
-  const skillMatchRatio = job.analysis.mustHaveSkills.length > 0
-    ? skillMatch.matchingMustHave.length / job.analysis.mustHaveSkills.length
-    : 0;
-  
-  if (skillMatch.matchingMustHave.length > 0) {
-    strengths.push(`You have ${skillMatch.matchingMustHave.length} of ${job.analysis.mustHaveSkills.length} required skills: ${skillMatch.matchingMustHave.slice(0, 3).join(", ")}${skillMatch.matchingMustHave.length > 3 ? "..." : ""}`);
-    skillAnalysis = `You match ${Math.round(skillMatchRatio * 100)}% of must-have skills (${skillMatch.matchingMustHave.length} out of ${job.analysis.mustHaveSkills.length}).`;
-  }
-  
-  if (skillMatch.missingMustHave.length > 0) {
-    gaps.push(`Missing ${skillMatch.missingMustHave.length} must-have skills: ${skillMatch.missingMustHave.slice(0, 3).join(", ")}${skillMatch.missingMustHave.length > 3 ? "..." : ""}`);
-    skillAnalysis = (skillAnalysis || "") + ` Missing: ${skillMatch.missingMustHave.slice(0, 3).join(", ")}${skillMatch.missingMustHave.length > 3 ? "..." : ""}.`;
-    recommendations.push(`Learn or gain experience with: ${skillMatch.missingMustHave.slice(0, 3).join(", ")}`);
-  }
-  
-  if (skillMatch.matchingNiceToHave.length > 0) {
-    strengths.push(`You have ${skillMatch.matchingNiceToHave.length} nice-to-have skills: ${skillMatch.matchingNiceToHave.slice(0, 2).join(", ")}${skillMatch.matchingNiceToHave.length > 2 ? "..." : ""}`);
-  }
-
-  // Education analysis
-  if (job.analysis.educationLevel) {
-    if (educationMatch) {
-      strengths.push(`Education requirement met: ${job.analysis.educationLevel}`);
-    } else {
-      gaps.push(`Education requirement: ${job.analysis.educationLevel} (your level: ${userEducationLevel || "not specified"})`);
-      if (!userEducationLevel) {
-        recommendations.push(`Consider highlighting relevant coursework, certifications, or self-study equivalent to ${job.analysis.educationLevel}`);
-      }
-    }
-  }
-
-  // Language analysis
-  if (job.analysis.languageRequirements.length > 0) {
-    if (languageMatch) {
-      strengths.push(`Language requirements met: ${job.analysis.languageRequirements.join(", ")}`);
-    } else {
-      const missingLangs = job.analysis.languageRequirements.filter((l: string) => 
-        !userLanguages.some((ul: string) => ul.toLowerCase().includes(l.toLowerCase()))
-      );
-      if (missingLangs.length > 0) {
-        gaps.push(`Missing language requirement: ${missingLangs.join(", ")}`);
-        recommendations.push(`Consider improving proficiency in: ${missingLangs.join(", ")}`);
-      }
-    }
-  }
-
-  // Generate summary
-  let summary = "";
-  if (finalScore >= 70) {
-    summary = `Strong match (${finalScore}%). ${strengths.length > 0 ? strengths[0] : "Good overall alignment with job requirements."}`;
-  } else if (finalScore >= 50) {
-    summary = `Moderate match (${finalScore}%). You have some relevant skills and experience, but there are gaps to address.`;
-  } else {
-    summary = `Partial match (${finalScore}%). This role has some alignment with your profile, but significant skill or experience gaps exist.`;
-  }
-
-  return {
-    summary,
-    strengths: strengths.slice(0, 5),
-    gaps: gaps.slice(0, 5),
-    recommendations: recommendations.slice(0, 5),
-    experienceAnalysis,
-    skillAnalysis,
+  // Prepare user profile data
+  const userProfile = {
+    skills: userSkills,
+    experienceYears: userExperienceYears,
+    educationLevel: userEducationLevel,
+    languages: userLanguages,
+    currentPosition: userCurrentPosition,
   };
+
+  // Prepare job requirements
+  const jobRequirements = {
+    title: job.title,
+    company: job.company,
+    location: job.location,
+    mustHaveSkills: job.analysis.mustHaveSkills || [],
+    niceToHaveSkills: job.analysis.niceToHaveSkills || [],
+    experienceYears: job.analysis.experienceYears,
+    educationLevel: job.analysis.educationLevel,
+    languageRequirements: job.analysis.languageRequirements || [],
+    description: job.descriptionRaw?.substring(0, 2000) || "", // First 2000 chars for context
+  };
+
+  const completion = await openai.chat.completions.create({
+    model: DEFAULT_MODEL,
+    temperature: 0.3,
+    max_tokens: 2000,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert career match analyst. Analyze how well a candidate's profile matches a job posting and provide a comprehensive match assessment.
+
+CRITICAL: TITLE/ROLE MATCHING IS THE MOST IMPORTANT FACTOR!
+
+STEP 1: FIRST check if the job title matches the candidate's current position/role type:
+- If candidate is "Software Engineer", "Frontend Engineer", "Backend Engineer", "Full Stack Developer", "Software Developer" → ONLY match with similar engineering/development roles
+- If candidate is "Product Owner", "Product Manager", "Business Analyst" → ONLY match with product/business roles
+- If candidate is "Data Engineer", "Data Scientist", "ML Engineer" → ONLY match with data/ML roles
+- DO NOT match Software Engineer with Product Owner, Manager, Designer, etc. (different career paths)
+- If roles are incompatible (e.g., Engineer vs Product Owner), return matchScore: 0-30 and explain this is a different career path
+
+STEP 2: Only if roles are compatible, then analyze:
+1. Calculate a match score (0-100) based on skills, experience, education, language
+2. Identify matching and missing skills (must-have and nice-to-have)
+3. Assess experience, education, and language matches
+4. Generate a detailed explanation with strengths, gaps, and recommendations
+
+CRITICAL RULES - SCORING PRIORITY:
+1. TITLE/ROLE MATCHING: This is the PRIMARY factor. Incompatible roles = very low score (0-30)
+2. EXPERIENCE MATCHING: This is the SECOND MOST IMPORTANT factor after role matching!
+   - Experience gap MUST significantly impact the score:
+     * 0-1 years gap (meets or slightly below): Can score 70-100
+     * 2 years gap: Can score 50-70 (significant penalty)
+     * 3 years gap: Can score 30-50 (major penalty)
+     * 4+ years gap: Can score 20-40 (very major penalty)
+   - A candidate with 2 years experience should ALWAYS score HIGHER for a 3-year role than a 5-year role
+   - Example: 2 YOE candidate → 3 YOE role = 55-65%, 5 YOE role = 35-45% (NOT the reverse!)
+3. SKILL MATCHING: Important but secondary to experience
+4. EDUCATION & LANGUAGE: Supporting factors
+
+SCORING FORMULA (approximate):
+- Base score starts from experience match (see above ranges)
+- Then adjust based on skill match percentage:
+  * 80%+ skills match: +10-15 points
+  * 60-79% skills match: +5-10 points
+  * 40-59% skills match: 0 points
+  * <40% skills match: -5-10 points
+- Apply 1.15x motivation boost (cap at 100)
+- Final score should reflect: Experience gap is MORE important than skill gaps
+- SKILL FILTERING: Ignore common/universal skills like "Git", "Vite", "npm", "yarn", "CI/CD" (every developer has these)
+- IGNORE LESS IMPORTANT SKILLS IN GAPS: Do NOT mention skills like "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" in gaps - these are minor UI libraries or state management tools, not core requirements. Focus on major gaps only.
+- IMPORTANT SKILLS TO CONSIDER: Testing frameworks (Jest, Vitest, Cypress, Playwright, etc.) ARE important and should be mentioned if missing. Core frameworks (React, Vue, Angular), languages (TypeScript, Python, Java), platforms (AWS, Azure, GCP), databases (PostgreSQL, MongoDB) are also important.
+- Focus on MAIN/IMPORTANT skills: frameworks, languages, platforms, databases, testing frameworks - NOT minor UI libraries or state management tools
+- Vector similarity (0-1) indicates semantic match - factor this into the score
+- Provide constructive, positive feedback even for lower matches
+- Be specific about which skills match/missing (only important ones)
+- Give actionable recommendations
+
+Return JSON with this EXACT structure:
+{
+  "matchScore": 75, // 0-100 (boosted for motivation)
+  "skillMatch": {
+    "score": 80, // 0-100
+    "matchingMustHave": ["React", "TypeScript"],
+    "missingMustHave": ["Docker"],
+    "matchingNiceToHave": ["AWS"],
+    "missingNiceToHave": ["Kubernetes"]
+  },
+  "experienceMatch": true, // or false
+  "educationMatch": true, // or false
+  "languageMatch": true, // or false
+  "matchExplanation": {
+    "summary": "Strong match (75%). You have most required skills and meet experience requirements.",
+    "strengths": ["strength 1", "strength 2", "strength 3"],
+    "gaps": ["gap 1", "gap 2"],
+    "recommendations": ["recommendation 1", "recommendation 2"],
+    "experienceAnalysis": "You have X years of experience, which meets/close to/exceeds the requirement of Y years.",
+    "skillAnalysis": "You match X% of must-have skills. Missing: [list]. Matching: [list].",
+    "titleMatch": "Role alignment analysis comparing user's current position to job title."
+  }
+}
+
+Respond ONLY with valid JSON, no markdown, no code blocks.`,
+      },
+      {
+        role: "user",
+        content: `Analyze the match between this candidate profile and job posting. START BY CHECKING IF ROLES ARE COMPATIBLE:
+
+CANDIDATE PROFILE:
+- Current Position: ${userProfile.currentPosition || "Not specified"}
+- Skills: ${userProfile.skills.join(", ") || "None listed"}
+- Experience: ${userProfile.experienceYears ? `${userProfile.experienceYears} years` : "Not specified"}
+- Education: ${userProfile.educationLevel || "Not specified"}
+- Languages: ${userProfile.languages.join(", ") || "Not specified"}
+${cvText && cvText.trim().length > 0 ? `\nCANDIDATE CV (excerpt):\n${cvText.substring(0, 5000)}\n` : ""}
+
+JOB POSTING:
+- Title: ${jobRequirements.title}
+- Company: ${jobRequirements.company || "Not specified"}
+- Location: ${jobRequirements.location || "Not specified"}
+
+JOB REQUIREMENTS:
+- Must-Have Skills: ${jobRequirements.mustHaveSkills.join(", ") || "None specified"}
+- Nice-to-Have Skills: ${jobRequirements.niceToHaveSkills.join(", ") || "None specified"}
+- Experience Required: ${jobRequirements.experienceYears ? `${jobRequirements.experienceYears} years` : "Not specified"}
+
+ CRITICAL: Calculate experience gap = (Required Experience) - (Candidate Experience)
+- If gap is 3 years (e.g., 2 YOE candidate for 5 YOE role), score MUST be 30-45% (major penalty)
+- If gap is 1 year (e.g., 2 YOE candidate for 3 YOE role), score can be 55-70% (moderate penalty)
+- Experience gap is MORE important than skill match percentage!
+- Education Required: ${jobRequirements.educationLevel || "Not specified"}
+- Language Requirements: ${jobRequirements.languageRequirements.join(", ") || "None specified"}
+
+SEMANTIC SIMILARITY: ${(vectorSimilarity * 100).toFixed(1)}% (based on CV/job description similarity)
+
+JOB DESCRIPTION (excerpt):
+${jobRequirements.description}
+
+ANALYSIS INSTRUCTIONS:
+1. FIRST: Check if "${userProfile.currentPosition || "candidate's role"}" is compatible with "${jobRequirements.title}"
+   - If NOT compatible (e.g., Software Engineer vs Product Owner), return matchScore: 0-30 and explain it's a different career path
+   - If compatible, proceed to step 2
+2. Filter out common skills (Git, Vite, npm, yarn, CI/CD) - focus on MAIN skills only
+3. Compare MAIN skills: frameworks, languages, platforms, databases
+4. Provide comprehensive match analysis with score, detailed breakdown, and actionable insights.`,
+      },
+    ],
+  }) as any;
+
+  const response = completion.choices[0]?.message?.content;
+  if (!response) {
+    throw new Error("No response from LLM");
+  }
+
+  try {
+    const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+    const analysis = JSON.parse(cleaned);
+
+    // Validate and ensure all required fields
+    return {
+      matchScore: Math.min(100, Math.max(0, Math.round(analysis.matchScore || 50))),
+      skillMatch: {
+        score: Math.min(100, Math.max(0, Math.round(analysis.skillMatch?.score || 50))),
+        matchingMustHave: Array.isArray(analysis.skillMatch?.matchingMustHave) 
+          ? analysis.skillMatch.matchingMustHave 
+          : [],
+        missingMustHave: Array.isArray(analysis.skillMatch?.missingMustHave) 
+          ? analysis.skillMatch.missingMustHave 
+          : [],
+        matchingNiceToHave: Array.isArray(analysis.skillMatch?.matchingNiceToHave) 
+          ? analysis.skillMatch.matchingNiceToHave 
+          : [],
+        missingNiceToHave: Array.isArray(analysis.skillMatch?.missingNiceToHave) 
+          ? analysis.skillMatch.missingNiceToHave 
+          : [],
+      },
+      experienceMatch: Boolean(analysis.experienceMatch),
+      educationMatch: Boolean(analysis.educationMatch),
+      languageMatch: Boolean(analysis.languageMatch),
+      matchExplanation: {
+        summary: analysis.matchExplanation?.summary || "Match analysis available.",
+        strengths: Array.isArray(analysis.matchExplanation?.strengths) 
+          ? analysis.matchExplanation.strengths.slice(0, 5) 
+          : [],
+        gaps: Array.isArray(analysis.matchExplanation?.gaps) 
+          ? analysis.matchExplanation.gaps.slice(0, 5) 
+          : [],
+        recommendations: Array.isArray(analysis.matchExplanation?.recommendations) 
+          ? analysis.matchExplanation.recommendations.slice(0, 5) 
+          : [],
+        experienceAnalysis: analysis.matchExplanation?.experienceAnalysis,
+        skillAnalysis: analysis.matchExplanation?.skillAnalysis,
+        titleMatch: analysis.matchExplanation?.titleMatch,
+      },
+    };
+  } catch (error) {
+    console.error("[Job Matching] Failed to parse LLM response:", error);
+    console.error("[Job Matching] Raw response:", response);
+    throw new Error("Failed to parse LLM match analysis");
+  }
 }
 
 /**
@@ -312,11 +329,14 @@ export async function matchJobsToUser(
   params: MatchJobsParams,
 ): Promise<JobMatchResult[]> {
   const {
+    userId,
     cvEmbedding,
+    cvText,
     userSkills,
     userExperienceYears,
     userEducationLevel,
     userLanguages = [],
+    userCurrentPosition,
     location,
     role,
     limit = 20,
@@ -345,172 +365,339 @@ export async function matchJobsToUser(
     };
   }
 
-  // Get jobs with analysis
-  // @ts-ignore - Prisma client will be regenerated after schema migration
+ 
   const jobs = await (prisma as any).job.findMany({
     where: whereClause,
     include: {
       analysis: true,
     },
-    take: 100, // Get more jobs for vector search, then filter
+    take: 100, 
   });
 
   if (jobs.length === 0) {
     return [];
   }
 
-  // Perform vector similarity search using raw SQL (pgvector)
-  // Use $queryRawUnsafe for vector queries (Prisma doesn't support vector types directly)
-  const embeddingString = `[${cvEmbedding.join(",")}]`;
-  const jobIds = jobs.map((j: any) => `'${j.id.replace(/'/g, "''")}'`).join(",");
+  const cacheCutoff = new Date();
+  cacheCutoff.setDate(cacheCutoff.getDate() - 7);
   
-  const similarJobs = await prisma.$queryRawUnsafe<Array<{
-    jobId: string;
-    similarity: number;
-  }>>(
-    `SELECT 
-      ja."jobId",
-      1 - (ja."analysisEmbedding" <=> '${embeddingString}'::vector) as similarity
-    FROM "JobAnalysis" ja
-    WHERE ja."jobId" = ANY(ARRAY[${jobIds}]::text[])
-    ORDER BY similarity DESC
-    LIMIT ${limit * 2}`
-  );
+  const jobIds = jobs.map((j: any) => j.id);
+  
+  const cachedMatches = await (prisma as any).userJobMatch.findMany({
+    where: {
+      userId: userId,
+      calculatedAt: {
+        gte: cacheCutoff,
+      },
+      jobAnalysis: {
+        job: {
+          id: {
+            in: jobIds,
+          },
+        },
+      },
+    },
+    include: {
+      jobAnalysis: {
+        include: {
+          job: {
+            include: {
+              analysis: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      matchScore: "desc",
+    },
+  });
 
-  // Create map of jobId -> similarity
-  const similarityMap = new Map(
-    similarJobs.map((item) => [item.jobId, item.similarity]),
-  );
+  const cachedJobIds = new Set(cachedMatches.map((m: any) => m.jobAnalysis.job.id));
+  const allJobsCached = jobIds.slice(0, limit).every((id: string) => cachedJobIds.has(id));
+  
+  if (cachedMatches.length > 0 && (allJobsCached || cachedMatches.length >= limit)) {
+    return cachedMatches.map((match: any) => ({
+      job: {
+        id: match.jobAnalysis.job.id,
+        title: match.jobAnalysis.job.title,
+        company: match.jobAnalysis.job.company,
+        location: match.jobAnalysis.job.location,
+        url: match.jobAnalysis.job.url,
+        postedDate: match.jobAnalysis.job.postedDate,
+        salaryMin: match.jobAnalysis.job.salaryMin,
+        salaryMax: match.jobAnalysis.job.salaryMax,
+        salaryCurrency: match.jobAnalysis.job.salaryCurrency,
+      },
+      analysis: {
+        mustHaveSkills: match.jobAnalysis.mustHaveSkills || [],
+        niceToHaveSkills: match.jobAnalysis.niceToHaveSkills || [],
+        experienceYears: match.jobAnalysis.experienceYears,
+        educationLevel: match.jobAnalysis.educationLevel,
+        languageRequirements: match.jobAnalysis.languageRequirements || [],
+      },
+      matchScore: match.matchScore,
+      skillMatch: {
+        score: match.skillMatchScore,
+        matchingMustHave: [],
+        missingMustHave: [],
+        matchingNiceToHave: [],
+        missingNiceToHave: [],
+      },
+      experienceMatch: match.experienceMatch,
+      educationMatch: match.educationMatch,
+      languageMatch: match.languageMatch,
+      matchExplanation: match.matchExplanation as any,
+    }));
+  }
 
-  // Calculate match scores for each job
-  const matches: JobMatchResult[] = [];
+  const missingJobIds = jobIds.filter((id: string) => !cachedJobIds.has(id));
+  console.log(`[Job Matching] Cache incomplete: ${cachedMatches.length} cached, ${missingJobIds.length} missing - calculating fresh matches with LLM for user ${userId}`);
+  
+  const commonSkills = new Set([
+    "git", "github", "vite", "npm", "yarn",  "agile", "scrum",
+    "jira", "confluence", "slack", "docker", "kubernetes", "linux", "unix",
+    "rest", "api", "http", "https", "json", "xml", "sql", "nosql"
+  ]);
+  
+  const filterCommonSkills = (skills: string[]): string[] => {
+    return skills.filter(skill => {
+      const skillLower = skill.toLowerCase();
+      return !commonSkills.has(skillLower) && 
+             !skillLower.includes("git") && 
+             !skillLower.includes("vite") &&
+             !skillLower.includes("npm");
+    });
+  };
 
-  for (const job of jobs) {
-    if (!job.analysis) continue;
-
-    const similarity = similarityMap.get(job.id) || 0;
+  const isRoleCompatible = (userPosition: string | undefined, jobTitle: string): boolean => {
+    if (!userPosition) return true; // If no position, allow all
     
-    // Calculate skill match
-    const skillMatch = calculateSkillMatchScore(
-      userSkills,
-      job.analysis.mustHaveSkills,
-      job.analysis.niceToHaveSkills,
+    const userLower = userPosition.toLowerCase();
+    const jobLower = jobTitle.toLowerCase();
+    
+    const engineeringRoles = ["engineer", "developer", "programmer", "coder", "architect"];
+    const productRoles = ["product owner", "product manager", "po", "pm", "business analyst", "ba"];
+    const dataRoles = ["data engineer", "data scientist", "ml engineer", "ai engineer", "analyst"];
+    const designRoles = ["designer", "ui/ux", "ux designer", "ui designer"];
+    const managementRoles = ["manager", "lead", "director", "head of", "cto", "vp"];
+    
+    const userIsEngineer = engineeringRoles.some(role => userLower.includes(role));
+    const jobIsEngineer = engineeringRoles.some(role => jobLower.includes(role));
+    
+    const userIsProduct = productRoles.some(role => userLower.includes(role));
+    const jobIsProduct = productRoles.some(role => jobLower.includes(role));
+    
+    const userIsData = dataRoles.some(role => userLower.includes(role));
+    const jobIsData = dataRoles.some(role => jobLower.includes(role));
+    
+    const userIsDesign = designRoles.some(role => userLower.includes(role));
+    const jobIsDesign = designRoles.some(role => jobLower.includes(role));
+    
+    const userIsManagement = managementRoles.some(role => userLower.includes(role));
+    const jobIsManagement = managementRoles.some(role => jobLower.includes(role));
+    
+    if (userIsEngineer && !jobIsEngineer && !jobIsManagement) return false;
+    if (userIsProduct && !jobIsProduct && !jobIsManagement) return false;
+    if (userIsData && !jobIsData) return false;
+    if (userIsDesign && !jobIsDesign) return false;
+    
+    return true;
+  };
+
+  const jobsToProcess = jobs.filter((j: any) => {
+    if (!j.analysis) return false;
+    if (!missingJobIds.includes(j.id)) return false; // Skip if already cached
+    return isRoleCompatible(userCurrentPosition, j.title);
+  });
+
+  console.log(`[Job Matching] Pre-filtered ${jobs.length} jobs to ${jobsToProcess.length} compatible roles (${missingJobIds.length - jobsToProcess.length} filtered out due to role mismatch)`);
+
+  const matches: JobMatchResult[] = cachedMatches.map((match: any) => ({
+    job: {
+      id: match.jobAnalysis.job.id,
+      title: match.jobAnalysis.job.title,
+      company: match.jobAnalysis.job.company,
+      location: match.jobAnalysis.job.location,
+      url: match.jobAnalysis.job.url,
+      postedDate: match.jobAnalysis.job.postedDate,
+      salaryMin: match.jobAnalysis.job.salaryMin,
+      salaryMax: match.jobAnalysis.job.salaryMax,
+      salaryCurrency: match.jobAnalysis.job.salaryCurrency,
+    },
+    analysis: {
+      mustHaveSkills: match.jobAnalysis.mustHaveSkills || [],
+      niceToHaveSkills: match.jobAnalysis.niceToHaveSkills || [],
+      experienceYears: match.jobAnalysis.experienceYears,
+      educationLevel: match.jobAnalysis.educationLevel,
+      languageRequirements: match.jobAnalysis.languageRequirements || [],
+    },
+    matchScore: match.matchScore,
+    skillMatch: {
+      score: match.skillMatchScore,
+      matchingMustHave: [],
+      missingMustHave: [],
+      matchingNiceToHave: [],
+      missingNiceToHave: [],
+    },
+    experienceMatch: match.experienceMatch,
+    educationMatch: match.educationMatch,
+    languageMatch: match.languageMatch,
+    matchExplanation: match.matchExplanation as any,
+  }));
+
+  let similarityMap = new Map<string, number>();
+  
+  if (jobsToProcess.length > 0) {
+    const embeddingString = `[${cvEmbedding.join(",")}]`;
+    const jobsToProcessIds = jobsToProcess.map((j: any) => `'${j.id.replace(/'/g, "''")}'`).join(",");
+    
+    const similarJobs = await prisma.$queryRawUnsafe<Array<{
+      jobId: string;
+      similarity: number;
+    }>>(
+      `SELECT 
+        ja."jobId",
+        1 - (ja."analysisEmbedding" <=> '${embeddingString}'::vector) as similarity
+      FROM "JobAnalysis" ja
+      WHERE ja."jobId" = ANY(ARRAY[${jobsToProcessIds}]::text[])
+      ORDER BY similarity DESC
+      LIMIT ${limit * 2}`
     );
 
-    // Check experience match
-    const experienceMatch =
-      !job.analysis.experienceYears ||
-      !userExperienceYears ||
-      userExperienceYears >= job.analysis.experienceYears;
-
-    // Check education match (basic check)
-    const educationMatch =
-      !job.analysis.educationLevel ||
-      !userEducationLevel ||
-      userEducationLevel.toLowerCase().includes(
-        job.analysis.educationLevel.toLowerCase(),
-      ) ||
-      (job.analysis.educationLevel.toLowerCase().includes("bachelor") &&
-        userEducationLevel.toLowerCase().includes("master"));
-
-    // Check language match
-    const languageMatch =
-      job.analysis.languageRequirements.length === 0 ||
-      job.analysis.languageRequirements.some((lang: string) =>
-        userLanguages.some(
-          (userLang: string) =>
-            userLang.toLowerCase().includes(lang.toLowerCase()) ||
-            lang.toLowerCase().includes(userLang.toLowerCase()),
-        ),
-      );
-
-    // Combine scores (less strict, more matches):
-    // - Vector similarity: 30% weight (semantic match)
-    // - Skill match: 50% weight
-    // - Other factors: 20% weight (experience, education, language)
-    const vectorScore = similarity * 100; // Convert to 0-100
-    const skillScore = skillMatch.score;
-    
-    // More lenient scoring for experience/education/language
-    const experienceScore = !job.analysis.experienceYears || !userExperienceYears
-      ? 50 // Neutral if not specified
-      : userExperienceYears >= job.analysis.experienceYears
-      ? 100
-      : userExperienceYears >= job.analysis.experienceYears * 0.7 // 70% of required = still good
-      ? 70
-      : 30; // Some penalty but not zero
-    
-    const educationScore = !job.analysis.educationLevel || !userEducationLevel
-      ? 50
-      : educationMatch ? 100 : 40; // Less penalty for education mismatch
-    
-    const languageScore = job.analysis.languageRequirements.length === 0
-      ? 50
-      : languageMatch ? 100 : 20;
-    
-    const otherScore = (experienceScore + educationScore + languageScore) / 3;
-
-    const finalScore = Math.round(
-      vectorScore * 0.3 + skillScore * 0.5 + otherScore * 0.2,
+    similarityMap = new Map(
+      similarJobs.map((item) => [item.jobId, item.similarity]),
     );
+  }
 
-    // Generate detailed match explanation
-    const explanation = generateMatchExplanation({
-      job,
-      userSkills,
-      userExperienceYears,
-      userEducationLevel,
-      userLanguages,
-      skillMatch,
-      experienceMatch,
-      experienceScore,
-      educationMatch,
-      languageMatch,
-      finalScore,
+  const batchSize = 5; 
+
+  for (let i = 0; i < jobsToProcess.length; i += batchSize) {
+    const batch = jobsToProcess.slice(i, i + batchSize);
+    
+    const batchPromises = batch.map(async (job: any) => {
+      try {
+        const similarity = similarityMap.get(job.id) || 0;
+        
+        const filteredMustHave = filterCommonSkills(job.analysis.mustHaveSkills || []);
+        const filteredNiceToHave = filterCommonSkills(job.analysis.niceToHaveSkills || []);
+        const filteredUserSkills = filterCommonSkills(userSkills);
+        
+        const analysis = await analyzeJobMatchWithLLM({
+          job: {
+            ...job,
+            analysis: {
+              ...job.analysis,
+              mustHaveSkills: filteredMustHave,
+              niceToHaveSkills: filteredNiceToHave,
+            },
+          },
+          cvText: cvText ? cvText.substring(0, 5000) : undefined, 
+          userSkills: filteredUserSkills,
+          userExperienceYears,
+          userEducationLevel,
+          userLanguages,
+          userCurrentPosition,
+          vectorSimilarity: similarity,
+        });
+
+        if (analysis.matchScore >= minMatchScore) {
+          return {
+            job: {
+              id: job.id,
+              title: job.title,
+              company: job.company,
+              location: job.location,
+              url: job.url,
+              postedDate: job.postedDate,
+              salaryMin: job.salaryMin,
+              salaryMax: job.salaryMax,
+              salaryCurrency: job.salaryCurrency,
+            },
+            analysis: {
+              mustHaveSkills: job.analysis.mustHaveSkills,
+              niceToHaveSkills: job.analysis.niceToHaveSkills,
+              experienceYears: job.analysis.experienceYears,
+              educationLevel: job.analysis.educationLevel,
+              languageRequirements: job.analysis.languageRequirements,
+            },
+            matchScore: analysis.matchScore,
+            skillMatch: analysis.skillMatch,
+            experienceMatch: analysis.experienceMatch,
+            educationMatch: analysis.educationMatch,
+            languageMatch: analysis.languageMatch,
+            matchExplanation: analysis.matchExplanation,
+            _jobAnalysisId: job.id, 
+            _similarity: similarity,
+          };
+        }
+        return null;
+      } catch (error) {
+        console.error(`[Job Matching] Failed to analyze match for job ${job.id}:`, error);
+        return null;
+      }
     });
 
-    if (finalScore >= minMatchScore) {
-      matches.push({
-        job: {
-          id: job.id,
-          title: job.title,
-          company: job.company,
-          location: job.location,
-          url: job.url,
-          postedDate: job.postedDate,
-          salaryMin: job.salaryMin,
-          salaryMax: job.salaryMax,
-          salaryCurrency: job.salaryCurrency,
-        },
-        analysis: {
-          mustHaveSkills: job.analysis.mustHaveSkills,
-          niceToHaveSkills: job.analysis.niceToHaveSkills,
-          experienceYears: job.analysis.experienceYears,
-          educationLevel: job.analysis.educationLevel,
-          languageRequirements: job.analysis.languageRequirements,
-        },
-        matchScore: finalScore,
-        skillMatch,
-        experienceMatch,
-        educationMatch,
-        languageMatch,
-        matchExplanation: explanation,
-      });
+    const batchResults = await Promise.all(batchPromises);
+    
+    for (const result of batchResults) {
+      if (result) {
+        matches.push(result);
+        
+        (async () => {
+          try {
+            await (prisma as any).userJobMatch.upsert({
+              where: {
+                userId_jobId: {
+                  userId: userId,
+                  jobId: result._jobAnalysisId,
+                },
+              },
+              create: {
+                userId: userId,
+                jobId: result._jobAnalysisId,
+                matchScore: result.matchScore,
+                skillMatchScore: result.skillMatch.score,
+                titleMatchScore: 50, 
+                vectorSimilarity: result._similarity,
+                experienceMatch: result.experienceMatch,
+                educationMatch: result.educationMatch,
+                languageMatch: result.languageMatch,
+                matchExplanation: result.matchExplanation as any,
+                calculatedAt: new Date(), 
+              },
+              update: {
+                matchScore: result.matchScore,
+                skillMatchScore: result.skillMatch.score,
+                titleMatchScore: 50,
+                vectorSimilarity: result._similarity,
+                experienceMatch: result.experienceMatch,
+                educationMatch: result.educationMatch,
+                languageMatch: result.languageMatch,
+                matchExplanation: result.matchExplanation as any,
+                calculatedAt: new Date(), 
+                updatedAt: new Date(),
+              },
+            });
+          } catch (error) {
+            console.error(`[Job Matching] Failed to cache match for job ${result.job.id}:`, error);
+          }
+        })();
+      }
+    }
+    
+    if (i + batchSize < jobsToProcess.length) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
   }
 
-  // Sort by match score (descending)
   matches.sort((a, b) => b.matchScore - a.matchScore);
 
-  // Return top N matches
   return matches.slice(0, limit);
 }
 
-/**
- * Get user CV embedding from resume
- */
+
 export async function getUserCVEmbedding(userId: string): Promise<number[] | null> {
-  // Use raw SQL since cvEmbedding is Unsupported type and Prisma client needs regeneration
   const result = await prisma.$queryRaw<any[]>`
     SELECT "cvEmbedding"::text
     FROM "Resume"
@@ -525,10 +712,8 @@ export async function getUserCVEmbedding(userId: string): Promise<number[] | nul
     return null;
   }
 
-  // Parse vector from text format (PostgreSQL returns vector as text like "[0.1,0.2,...]")
   const vectorText = result[0].cvEmbedding;
   try {
-    // Remove brackets and split by comma
     const vectorArray = vectorText
       .replace(/[\[\]]/g, '')
       .split(',')
@@ -540,23 +725,18 @@ export async function getUserCVEmbedding(userId: string): Promise<number[] | nul
   }
 }
 
-/**
- * Generate CV embedding from resume text if not exists
- */
+
 export async function generateCVEmbeddingIfNeeded(
   userId: string,
   resumeText: string,
 ): Promise<number[]> {
-  // Check if embedding already exists
   const existing = await getUserCVEmbedding(userId);
   if (existing) {
     return existing;
   }
 
-  // Generate embedding
   const embedding = await generateEmbedding(resumeText.substring(0, 8000));
 
-  // Update resume with embedding
   const resume = await prisma.resume.findFirst({
     where: {
       userId,

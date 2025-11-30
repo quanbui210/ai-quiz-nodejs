@@ -61,6 +61,7 @@ export interface JobMarketAnalysis {
 
 export interface AnalyzeJobMarketInput {
   jobMarketData: JobMarketInsights;
+  isGeneral?: boolean; 
 }
 
 export async function analyzeJobMarketWithAI(

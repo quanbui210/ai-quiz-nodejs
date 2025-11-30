@@ -36,15 +36,14 @@ export const getJobMarketInsights = async (
         : "fi"; // Default to Finland for now
 
     // Check for pre-fetched general market insights (fetched via cron job)
-    const cachedInsight = await prisma.marketInsight.findUnique({
-      where: {
-        role_location_country: {
-          role: normalizedRole,
-          location: normalizedLocation || null,
-          country: normalizedCountry || "default",
-        },
-      },
-    });
+    const cachedInsightResult = await prisma.$queryRaw<any[]>`
+      SELECT * FROM "MarketInsight"
+      WHERE "role" = ${normalizedRole}
+        AND ("location" = ${normalizedLocation || null} OR ("location" IS NULL AND ${normalizedLocation === undefined}))
+        AND "country" = ${normalizedCountry || "default"}
+      LIMIT 1
+    `;
+    const cachedInsight = cachedInsightResult && cachedInsightResult.length > 0 ? cachedInsightResult[0] : null;
 
     if (cachedInsight) {
       console.log(`[Market Insights] Using pre-fetched general insights for ${normalizedRole} in ${normalizedLocation || normalizedCountry}`);
