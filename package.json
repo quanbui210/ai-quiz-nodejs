@@ -23,6 +23,7 @@
     "fix:attempts": "ts-node scripts/fix-existing-attempts.ts",
     "seed:plans": "ts-node scripts/seed-default-plans.ts",
     "seed:admin": "ts-node scripts/seed-admin-user.ts",
+    "seed:test-users": "ts-node scripts/seed-test-users.ts",
     "sync:usage": "ts-node scripts/sync-user-usage.ts",
     "sync:subscriptions": "ts-node scripts/sync-subscriptions-from-stripe.ts",
     "setup:production": "ts-node scripts/setup-production-db.ts",

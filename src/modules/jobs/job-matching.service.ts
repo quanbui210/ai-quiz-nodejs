@@ -154,12 +154,25 @@ async function analyzeJobMatchWithLLM(params: {
 
 CRITICAL: TITLE/ROLE MATCHING IS THE MOST IMPORTANT FACTOR!
 
-STEP 1: FIRST check if the job title matches the candidate's current position/role type, also check for experience level in title.
+STEP 1: FIRST check if the job title matches the candidate's current position/role type, also check for experience level AND management level in title.
+
+ROLE TYPE MATCHING:
 - If candidate is "Software Engineer", "Frontend Engineer", "Backend Engineer", "Full Stack Developer", "Software Developer" → ONLY match with similar engineering/development roles
 - If candidate is "Product Owner", "Product Manager", "Business Analyst" → ONLY match with product/business roles
 - If candidate is "Data Engineer", "Data Scientist", "ML Engineer" → ONLY match with data/ML roles
 - DO NOT match Software Engineer with Product Owner, Manager, Designer, etc. (different career paths)
 - If roles are incompatible (e.g., Engineer vs Product Owner), return matchScore: 0-30 and explain this is a different career path
+
+MANAGEMENT ROLE DETECTION (CRITICAL):
+- If job title contains: "Manager", "Lead", "Senior", "Director", "Head of", "Principal", "Staff", "Architect" (in management context), "Engineering Manager", "Tech Lead", "Team Lead", "Engineering Lead" → This is a MANAGEMENT/LEADERSHIP role
+- Check if candidate's current position/title contains management indicators: "Manager", "Lead", "Senior", "Director", "Head", "Principal", "Staff", "Architect", "Team Lead", "Tech Lead"
+- If job is a MANAGEMENT role but candidate's title does NOT indicate management experience:
+  * Return matchScore: 20-40 (major penalty for management role mismatch)
+  * In titleMatch explanation, explicitly state: "This is a management/leadership role requiring team management, leadership, and people management experience. Your current position as [candidate title] does not indicate management experience, which is a significant gap for this role."
+  * In matchExplanation.summary, mention: "This role requires management experience which you may not have."
+  * In recommendations, suggest: "Consider gaining leadership/management experience before applying to management roles."
+- If job is a MANAGEMENT role AND candidate has management experience → Can score higher (50-100) based on other factors
+- If job is NOT a management role AND candidate has management experience → This is fine, can score normally
 
 STEP 2: Only if roles are compatible, then analyze:
 1. Calculate a match score (0-100) based on skills, experience, education, language
@@ -239,6 +252,8 @@ CANDIDATE PROFILE:
 - Experience: ${userProfile.experienceYears ? `${userProfile.experienceYears} years` : "Not specified"}
 - Education: ${userProfile.educationLevel || "Not specified"}
 - Languages: ${userProfile.languages.join(", ") || "Not specified"}
+
+IF NOT SPECIFIED, read from candidate's resume (CV TEXT):
 ${cvText && cvText.trim().length > 0 ? `\nCANDIDATE CV (excerpt):\n${cvText.substring(0, 5000)}\n` : ""}
 
 JOB POSTING:
@@ -265,11 +280,18 @@ ${jobRequirements.description}
 
 ANALYSIS INSTRUCTIONS:
 1. FIRST: Check if "${userProfile.currentPosition || "candidate's role"}" is compatible with "${jobRequirements.title}"
+   - Check if job title is a MANAGEMENT/LEADERSHIP role (contains: Manager, Lead, Senior, Director, Head of, Principal, Staff, Architect, Engineering Manager, Tech Lead, Team Lead)
+   - Check if candidate's current position/title indicates management experience (contains: Manager, Lead, Senior, Director, Head, Principal, Staff, Architect, Team Lead, Tech Lead)
+   - If job is MANAGEMENT role but candidate lacks management indicators in their title:
+     * Return matchScore: 20-40 (major penalty)
+     * In titleMatch: Explicitly state "This is a management/leadership role requiring team management and leadership experience. Your current position as [candidate title] does not indicate management experience, which is a significant gap."
+     * In summary: Mention "This role requires management experience which you may not have."
+     * In recommendations: Suggest "Consider gaining leadership/management experience before applying to management roles."
    - If NOT compatible (e.g., Software Engineer vs Product Owner), return matchScore: 0-30 and explain it's a different career path
    - If compatible, proceed to step 2
 2. SKILL ANALYSIS - CRITICAL:
    - Filter out common tools: Git, Vite, npm, yarn, CI/CD
-   - NEVER include soft skills (Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, etc.) in missing skills - these are demonstrated through experience, not CV listings
+   - NEVER include soft or generic skills (Software Development, Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, etc.) in missing skills - these are demonstrated through experience, not CV listings
    - Only list TECHNICAL skills as missing: frameworks, languages, platforms, databases, testing frameworks, specific tools
    - Focus on MAIN technical skills only
 3. Compare TECHNICAL skills: frameworks, languages, platforms, databases, testing frameworks
@@ -301,9 +323,9 @@ ANALYSIS INSTRUCTIONS:
       : [];
 
     return {
-      matchScore: Math.min(100, Math.max(0, Math.round(analysis.matchScore || 50))),
+      matchScore: Math.min(100, Math.max(0, Math.round(analysis.matchScore ?? 50))),
       skillMatch: {
-        score: Math.min(100, Math.max(0, Math.round(analysis.skillMatch?.score || 50))),
+        score: Math.min(100, Math.max(0, Math.round(analysis.skillMatch?.score ?? 50))),
         matchingMustHave: Array.isArray(analysis.skillMatch?.matchingMustHave) 
           ? analysis.skillMatch.matchingMustHave 
           : [],
@@ -343,9 +365,7 @@ ANALYSIS INSTRUCTIONS:
   }
 }
 
-/**
- * Match user CV to jobs using vector search
- */
+
 export async function matchJobsToUser(
   params: MatchJobsParams,
 ): Promise<JobMatchResult[]> {
