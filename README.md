@@ -1,4 +1,4 @@
-# Quiz Backend API
+# Careerlab Backend API
 
 A comprehensive backend API for an AI-powered quiz application that enables users to create, take, and track quizzes with intelligent question generation, progress analytics, chat with AI tutor and generate quiz using RAG technique.
 
