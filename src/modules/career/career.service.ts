@@ -506,7 +506,7 @@ export const generateRoadmapPlan = async (
     const completion = await openai.chat.completions.create({
     model: DEFAULT_CAREER_MODEL,
     temperature: 0.45,
-    max_tokens: 2500, // Increased for better responses
+    max_tokens: 8000,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -622,20 +622,38 @@ Respond ONLY with valid JSON matching this structure.`,
 
   const rawResponse = completion.choices[0]?.message?.content;
   
-  // Try to clean the response if it has markdown code blocks
-  let cleanedResponse = rawResponse;
-  if (cleanedResponse) {
-    // Remove markdown code blocks if present
-    cleanedResponse = cleanedResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  if (!rawResponse) {
+    throw new Error("No response from LLM for roadmap generation");
+  }
+
+  if (completion.choices[0]?.finish_reason === "length") {
+    console.warn("[Roadmap] Response was truncated due to max_tokens limit");
+    throw new Error("Roadmap generation was truncated. The response exceeded the token limit. Please try again or reduce the scope.");
   }
   
+  let cleanedResponse = rawResponse;
+  if (cleanedResponse) {
+    cleanedResponse = cleanedResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
+  }
+
+  if (!cleanedResponse || cleanedResponse.length === 0) {
+    throw new Error("Empty response from LLM after cleaning");
+  }
+
   const parsed = safeJsonParse<RoadmapPlan>(cleanedResponse);
 
   if (!parsed) {
-    console.error("Failed to parse roadmap plan. Raw response:", rawResponse?.substring(0, 1000));
-    throw new Error(
-      `Failed to generate roadmap plan. Response may be malformed. First 500 chars: ${rawResponse?.substring(0, 500)}`,
-    );
+    const isIncomplete = !cleanedResponse.endsWith("}") && !cleanedResponse.endsWith("]");
+    const errorMsg = isIncomplete 
+      ? "Roadmap response appears to be incomplete (truncated JSON). This may indicate the response exceeded token limits."
+      : "Failed to parse roadmap plan. Response may be malformed.";
+    
+    console.error(`[Roadmap] ${errorMsg}`);
+    console.error("[Roadmap] Response length:", cleanedResponse.length);
+    console.error("[Roadmap] First 1000 chars:", rawResponse?.substring(0, 1000));
+    console.error("[Roadmap] Last 500 chars:", rawResponse?.substring(Math.max(0, rawResponse.length - 500)));
+    
+    throw new Error(`${errorMsg} First 500 chars: ${rawResponse?.substring(0, 500)}`);
   }
 
   if (!parsed.phases || !Array.isArray(parsed.phases) || parsed.phases.length === 0) {

@@ -167,7 +167,7 @@ STEP 2: Only if roles are compatible, then analyze:
 3. Assess experience, education, and language matches
 4. Generate a detailed explanation with strengths, gaps, and recommendations
 
-RULES: Remember not to assume user's soft skills like "Lack of key required skills like Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail" just because they don't list them in their resume. Note that they could have that. Focus on technical skills, educational level and language skills, experience level and job title.
+CRITICAL SOFT SKILLS RULE: NEVER list soft skills (Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, Time management, Adaptability, Critical thinking) as missing skills. These are demonstrated through work experience and interviews, not listed on CVs. Most professionals have these skills even if not explicitly mentioned. Only focus on TECHNICAL skills when identifying gaps. Soft skills should be assumed present based on the candidate's work experience.
 FOR EXAMPLE, my current position is "Full Stack Developer" and in my resume I listed that I have 2 years of experience in Full Stack Development. But the job title is "Senior Full Stack Developer". In this case, the match score should be 0-45 because the experience level is not matching the job title. If the job title is Product Owner, Mobile Developer, Data Engineer or similar, then the match score should be 0-20 because the role is different.
 CRITICAL RULES - SCORING PRIORITY:
 1. TITLE/ROLE MATCHING: This is the PRIMARY factor. Incompatible roles = very low score (0-30)
@@ -191,10 +191,13 @@ SCORING FORMULA (approximate):
   * <40% skills match: -5-10 points
 - Apply 1.15x motivation boost (cap at 100)
 - Final score should reflect: Experience gap is MORE important than skill gaps
-- SKILL FILTERING: Ignore common/universal skills like "Git", "Vite", "npm", "yarn", "CI/CD" (every developer has these)
-- IGNORE LESS IMPORTANT SKILLS IN GAPS: SOFT SKILLS LIKE "Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail" are not core requirements. Do NOT mention skills like "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" in gaps - these are minor UI libraries or state management tools, not core requirements. Focus on major gaps only.
-- IMPORTANT SKILLS TO CONSIDER: Testing frameworks (Jest, Vitest, Cypress, Playwright, etc.) ARE important and should be mentioned if missing. Core frameworks (React, Vue, Angular), languages (TypeScript, Python, Java), platforms (AWS, Azure, GCP), databases (PostgreSQL, MongoDB) are also important.
-- Focus on MAIN/IMPORTANT skills: frameworks, languages, platforms, databases, testing frameworks - NOT minor UI libraries or state management tools
+- SKILL FILTERING - CRITICAL RULES:
+  * IGNORE common/universal tools: "Git", "Vite", "npm", "yarn", "CI/CD" (every developer has these)
+  * NEVER LIST SOFT SKILLS AS MISSING: Soft skills like "Problem Solving", "Communication", "Interpersonal skills", "Organizational skills", "Attention to detail", "Teamwork", "Leadership", "Time management", "Adaptability", "Critical thinking" are demonstrated through work experience and interviews, NOT listed on CVs. Most candidates have these skills even if not explicitly mentioned. DO NOT include these in missingMustHave or missingNiceToHave arrays. DO NOT mention them in gaps or skillAnalysis.
+  * IGNORE minor UI/state libraries: "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" - these are minor tools, not core requirements
+  * FOCUS ON TECHNICAL SKILLS ONLY: Only list TECHNICAL skills as missing (frameworks, languages, platforms, databases, testing frameworks, tools, methodologies)
+- IMPORTANT TECHNICAL SKILLS TO CONSIDER: Testing frameworks (Jest, Vitest, Cypress, Playwright), core frameworks (React, Vue, Angular), languages (TypeScript, Python, Java, C++), platforms (AWS, Azure, GCP), databases (PostgreSQL, MongoDB), specific tools (Docker, Kubernetes, Terraform)
+- Remember: Soft skills are assumed to be present based on work experience. Only technical skill gaps matter for matching.
 - Vector similarity (0-1) indicates semantic match - factor this into the score
 - Provide constructive, positive feedback even for lower matches
 - Be specific about which skills match/missing (only important ones)
@@ -264,8 +267,12 @@ ANALYSIS INSTRUCTIONS:
 1. FIRST: Check if "${userProfile.currentPosition || "candidate's role"}" is compatible with "${jobRequirements.title}"
    - If NOT compatible (e.g., Software Engineer vs Product Owner), return matchScore: 0-30 and explain it's a different career path
    - If compatible, proceed to step 2
-2. Filter out common skills (Git, Vite, npm, yarn, CI/CD) - focus on MAIN skills only
-3. Compare MAIN skills: frameworks, languages, platforms, databases
+2. SKILL ANALYSIS - CRITICAL:
+   - Filter out common tools: Git, Vite, npm, yarn, CI/CD
+   - NEVER include soft skills (Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, etc.) in missing skills - these are demonstrated through experience, not CV listings
+   - Only list TECHNICAL skills as missing: frameworks, languages, platforms, databases, testing frameworks, specific tools
+   - Focus on MAIN technical skills only
+3. Compare TECHNICAL skills: frameworks, languages, platforms, databases, testing frameworks
 4. Provide comprehensive match analysis with score, detailed breakdown, and actionable insights.`,
       },
     ],
@@ -280,7 +287,19 @@ ANALYSIS INSTRUCTIONS:
     const cleaned = response.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
     const analysis = JSON.parse(cleaned);
 
-    // Validate and ensure all required fields
+    const softSkillsPattern = /problem solving|communication|interpersonal|organizational|attention to detail|teamwork|leadership|time management|adaptability|critical thinking|collaboration|work ethic|self-motivation|initiative|creativity|analytical thinking|decision making|conflict resolution|negotiation|presentation skills|written communication|verbal communication/i;
+    
+    const filterSoftSkills = (skills: string[]): string[] => {
+      return skills.filter(skill => !softSkillsPattern.test(skill));
+    };
+
+    const missingMustHave = Array.isArray(analysis.skillMatch?.missingMustHave) 
+      ? filterSoftSkills(analysis.skillMatch.missingMustHave)
+      : [];
+    const missingNiceToHave = Array.isArray(analysis.skillMatch?.missingNiceToHave) 
+      ? filterSoftSkills(analysis.skillMatch.missingNiceToHave)
+      : [];
+
     return {
       matchScore: Math.min(100, Math.max(0, Math.round(analysis.matchScore || 50))),
       skillMatch: {
@@ -288,15 +307,11 @@ ANALYSIS INSTRUCTIONS:
         matchingMustHave: Array.isArray(analysis.skillMatch?.matchingMustHave) 
           ? analysis.skillMatch.matchingMustHave 
           : [],
-        missingMustHave: Array.isArray(analysis.skillMatch?.missingMustHave) 
-          ? analysis.skillMatch.missingMustHave 
-          : [],
+        missingMustHave,
         matchingNiceToHave: Array.isArray(analysis.skillMatch?.matchingNiceToHave) 
           ? analysis.skillMatch.matchingNiceToHave 
           : [],
-        missingNiceToHave: Array.isArray(analysis.skillMatch?.missingNiceToHave) 
-          ? analysis.skillMatch.missingNiceToHave 
-          : [],
+        missingNiceToHave,
       },
       experienceMatch: Boolean(analysis.experienceMatch),
       educationMatch: Boolean(analysis.educationMatch),
@@ -307,13 +322,17 @@ ANALYSIS INSTRUCTIONS:
           ? analysis.matchExplanation.strengths.slice(0, 5) 
           : [],
         gaps: Array.isArray(analysis.matchExplanation?.gaps) 
-          ? analysis.matchExplanation.gaps.slice(0, 5) 
+          ? analysis.matchExplanation.gaps
+              .filter((gap: string) => !softSkillsPattern.test(gap))
+              .slice(0, 5)
           : [],
         recommendations: Array.isArray(analysis.matchExplanation?.recommendations) 
           ? analysis.matchExplanation.recommendations.slice(0, 5) 
           : [],
         experienceAnalysis: analysis.matchExplanation?.experienceAnalysis,
-        skillAnalysis: analysis.matchExplanation?.skillAnalysis,
+        skillAnalysis: analysis.matchExplanation?.skillAnalysis 
+          ? analysis.matchExplanation.skillAnalysis.replace(/problem solving|communication|interpersonal|organizational|attention to detail|teamwork|leadership|time management|adaptability|critical thinking/gi, '').replace(/\s+/g, ' ').trim()
+          : undefined,
         titleMatch: analysis.matchExplanation?.titleMatch,
       },
     };
