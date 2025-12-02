@@ -162,6 +162,15 @@ ROLE TYPE MATCHING:
 - If candidate is "Data Engineer", "Data Scientist", "ML Engineer" → ONLY match with data/ML roles
 - DO NOT match Software Engineer with Product Owner, Manager, Designer, etc. (different career paths)
 - If roles are incompatible (e.g., Engineer vs Product Owner), return matchScore: 0-30 and explain this is a different career path
+- IF candicate has "Full Stack Developer / Frontend Developer / Backend Developer" in their current position/title, then match with "Full Stack Developer / Frontend Developer / Backend Developer or Software Developer/Engineer role with tech stacks related to webb, full stack, frontend, backend" role.
+- IF candicate has "Embedded, Automation or Cloud or something, AI or something" in their current position/title, then match with "Embedded, Automation, Cloud, AI or AI software engineer with the tech stacks related to embeeded, automation, cloud, AI or AI software engineering" role.
+- IF candicate has "UX Designer" in their current position/title, then match with "UX Designer" role.
+- IF candidate has "Cyber Security Engineer" in their current position/title, then match with "Cyber Security Engineer" role.
+- If candidate has "DevOps Engineer" in their current position/title, then match with "DevOps Engineer" role.
+- If candidate has "Data Engineer" in their current position/title, then match with "Data Engineer" role.
+- If candidate has "Data Scientist" in their current position/title, then match with "Data Scientist" role.
+- If candidate has "ML Engineer" in their current position/title, then match with "ML Engineer" role.
+- If candidate has "AI Engineer" in their current position/title, then match with "AI Engineer" role.
 
 MANAGEMENT ROLE DETECTION (CRITICAL):
 - If job title contains: "Manager", "Lead", "Senior", "Director", "Head of", "Principal", "Staff", "Architect" (in management context), "Engineering Manager", "Tech Lead", "Team Lead", "Engineering Lead" → This is a MANAGEMENT/LEADERSHIP role
@@ -206,11 +215,13 @@ SCORING FORMULA (approximate):
 - Final score should reflect: Experience gap is MORE important than skill gaps
 - SKILL FILTERING - CRITICAL RULES:
   * IGNORE common/universal tools: "Git", "Vite", "npm", "yarn", "CI/CD" (every developer has these)
+  * NEVER LIST VAGUE/GENERIC TERMS AS MISSING: DO NOT list generic terms like "Engineering", "Software Development", "Development", "Programming", "Coding", "Technical Skills", "Software Engineering", "Engineering Expertise", "Development Experience" - these are too vague and not actionable. Only list SPECIFIC, CONCRETE technical skills.
   * NEVER LIST SOFT SKILLS AS MISSING: Soft skills like "Problem Solving", "Communication", "Interpersonal skills", "Organizational skills", "Attention to detail", "Teamwork", "Leadership", "Time management", "Adaptability", "Critical thinking" are demonstrated through work experience and interviews, NOT listed on CVs. Most candidates have these skills even if not explicitly mentioned. DO NOT include these in missingMustHave or missingNiceToHave arrays. DO NOT mention them in gaps or skillAnalysis.
   * IGNORE minor UI/state libraries: "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" - these are minor tools, not core requirements
-  * FOCUS ON TECHNICAL SKILLS ONLY: Only list TECHNICAL skills as missing (frameworks, languages, platforms, databases, testing frameworks, tools, methodologies)
+  * FOCUS ON SPECIFIC TECHNICAL SKILLS ONLY: Only list SPECIFIC, CONCRETE technical skills as missing. Examples of VALID missing skills: "React", "Python", "Docker", "Kubernetes", "PostgreSQL", "AWS", "TypeScript", "Jest", "Node.js", "MongoDB". Examples of INVALID (too vague): "Engineering", "Software Development", "Development", "Programming", "Technical Skills".
+  * SKILLS MUST BE ACTIONABLE: Missing skills should be specific technologies, frameworks, or tools that the candidate can learn. Generic terms like "Engineering" or "Software Development" are NOT actionable and should NEVER be listed.
 - IMPORTANT TECHNICAL SKILLS TO CONSIDER: Testing frameworks (Jest, Vitest, Cypress, Playwright), core frameworks (React, Vue, Angular), languages (TypeScript, Python, Java, C++), platforms (AWS, Azure, GCP), databases (PostgreSQL, MongoDB), specific tools (Docker, Kubernetes, Terraform)
-- Remember: Soft skills are assumed to be present based on work experience. Only technical skill gaps matter for matching.
+- Remember: Soft skills are assumed to be present based on work experience. Only specific, concrete technical skill gaps matter for matching. Vague terms like "Engineering" are meaningless and should never appear in missing skills.
 - Vector similarity (0-1) indicates semantic match - factor this into the score
 - Provide constructive, positive feedback even for lower matches
 - Be specific about which skills match/missing (only important ones)
@@ -246,15 +257,17 @@ Respond ONLY with valid JSON, no markdown, no code blocks.`,
         role: "user",
         content: `Analyze the match between this candidate profile and job posting. START BY CHECKING IF ROLES ARE COMPATIBLE:
 
-CANDIDATE PROFILE:
+
+
+Use CV TEXT to get more information about the candidate.
+${cvText && cvText.trim().length > 0 ? `\nCANDIDATE CV (excerpt):\n${cvText.substring(0, 5000)}\n` : ""}
+
+If no CV TEXT, use CANDIDATE PROFILE:
 - Current Position: ${userProfile.currentPosition || "Not specified"}
 - Skills: ${userProfile.skills.join(", ") || "None listed"}
 - Experience: ${userProfile.experienceYears ? `${userProfile.experienceYears} years` : "Not specified"}
 - Education: ${userProfile.educationLevel || "Not specified"}
 - Languages: ${userProfile.languages.join(", ") || "Not specified"}
-
-IF NOT SPECIFIED, read from candidate's resume (CV TEXT):
-${cvText && cvText.trim().length > 0 ? `\nCANDIDATE CV (excerpt):\n${cvText.substring(0, 5000)}\n` : ""}
 
 JOB POSTING:
 - Title: ${jobRequirements.title}
@@ -291,9 +304,11 @@ ANALYSIS INSTRUCTIONS:
    - If compatible, proceed to step 2
 2. SKILL ANALYSIS - CRITICAL:
    - Filter out common tools: Git, Vite, npm, yarn, CI/CD
-   - NEVER include soft or generic skills (Software Development, Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, etc.) in missing skills - these are demonstrated through experience, not CV listings
-   - Only list TECHNICAL skills as missing: frameworks, languages, platforms, databases, testing frameworks, specific tools
-   - Focus on MAIN technical skills only
+   - NEVER include vague/generic terms like "Engineering", "Software Development", "Development", "Programming", "Technical Skills", "Engineering Expertise" in missing skills - these are too vague and not actionable
+   - NEVER include soft skills (Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, etc.) in missing skills - these are demonstrated through experience, not CV listings
+   - Only list SPECIFIC, CONCRETE technical skills as missing: specific frameworks (React, Vue, Angular), specific languages (TypeScript, Python, Java, C++), specific platforms (AWS, Azure, GCP), specific databases (PostgreSQL, MongoDB), specific testing frameworks (Jest, Cypress), specific tools (Docker, Kubernetes)
+   - Focus on MAIN technical skills only - skills must be actionable and learnable
+   - Compare what's ACTUALLY in the candidate's CV against job requirements - don't assume gaps based on generic terms
 3. Compare TECHNICAL skills: frameworks, languages, platforms, databases, testing frameworks
 4. Provide comprehensive match analysis with score, detailed breakdown, and actionable insights.`,
       },
@@ -353,7 +368,11 @@ ANALYSIS INSTRUCTIONS:
           : [],
         experienceAnalysis: analysis.matchExplanation?.experienceAnalysis,
         skillAnalysis: analysis.matchExplanation?.skillAnalysis 
-          ? analysis.matchExplanation.skillAnalysis.replace(/problem solving|communication|interpersonal|organizational|attention to detail|teamwork|leadership|time management|adaptability|critical thinking/gi, '').replace(/\s+/g, ' ').trim()
+          ? analysis.matchExplanation.skillAnalysis
+              .replace(/problem solving|communication|interpersonal|organizational|attention to detail|teamwork|leadership|time management|adaptability|critical thinking/gi, '')
+              .replace(/\b(engineering|software development|development|programming|technical skills|engineering expertise|software engineering|development experience|engineering experience)\b/gi, '')
+              .replace(/\s+/g, ' ')
+              .trim()
           : undefined,
         titleMatch: analysis.matchExplanation?.titleMatch,
       },
