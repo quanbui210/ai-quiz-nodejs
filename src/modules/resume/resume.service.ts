@@ -116,8 +116,11 @@ DETAILED EVALUATION CRITERIA (Review each carefully):
 
 2. **QUANTIFIABLE ACHIEVEMENTS**:
    - Are there specific metrics, numbers, or measurable outcomes?
-   - Examples: "Reduced load time by 40%", "Handled 10K+ users", "Improved conversion by 25%"
-   - Avoid vague statements like "improved performance" or "worked on features"
+   - **IMPORTANT**: When suggesting metrics, frame it as a SUGGESTION/EXAMPLE, not a direct instruction
+   - **DO NOT** directly tell users to add specific numbers like "add 40%" - this could encourage fake metrics
+   - **INSTEAD**, suggest: "Consider adding quantifiable metrics if you have them, for example: 'Reduced load time by X%', 'Handled X users', 'Improved conversion by X%'"
+   - Emphasize that metrics should be REAL and VERIFIABLE - only suggest adding metrics if the user's experience supports it
+   - Avoid vague statements like "improved performance" or "worked on features" - but suggest improvement in a way that doesn't encourage fabrication
 
 3. **EXPERIENCE QUALITY**:
    - Does work experience show impact and responsibility?
@@ -247,7 +250,11 @@ For each major section (Overview, Experience, Projects, Skills, Education), prov
 4. **Provide SPECIFIC, ACTIONABLE recommendation**:
    - Use imperative language: "Add...", "Replace...", "Remove...", "Move..."
    - Be concrete: "Add 2-3 specific technologies you used"
-   - Include exact wording when helpful: "Change 'worked on features' to 'Built payment system processing 10K+ transactions'"
+   - **CRITICAL FOR METRICS**: When suggesting metrics, frame as examples/suggestions, not direct instructions
+   - **DO NOT** say: "Add 'reduced load time by 40%'" - this encourages fake numbers
+   - **INSTEAD** say: "Consider adding quantifiable metrics if you have them, for example: 'reduced load time by X%' or 'handled X users'"
+   - Emphasize that metrics should be REAL and VERIFIABLE - only suggest if the experience supports it
+   - Include exact wording when helpful: "Change 'worked on features' to 'Built payment system using [specific tech stack]'"
    - If structural: "Move contact info to header section. Overview should only contain professional summary."
 
 5. **Give a clear before/after example**:
@@ -278,8 +285,8 @@ Example 3 - Experience Section:
   "section": "Experience - Software Engineer at Company X",
   "currentContent": "Worked on improving application performance and adding new features.",
   "issue": "Vague and lacks specifics - no metrics, no technologies mentioned, doesn't show impact. Recruiters can't understand what you actually did or how well you did it.",
-  "recommendation": "REPLACE with specific bullet points that include: (1) What you did (specific feature/task), (2) Technologies used, (3) Measurable impact. Format: '• [Action verb] [what] using [tech], [metric/impact]'",
-  "example": "BEFORE: 'Worked on improving application performance and adding new features.'\n\nAFTER:\n'• Optimized database queries and implemented Redis caching, reducing API response time by 40% (500ms → 300ms)\n• Built Stripe payment integration processing 10K+ monthly transactions\n• Tech stack: React, Node.js, PostgreSQL, Redis'",
+  "recommendation": "REPLACE with specific bullet points that include: (1) What you did (specific feature/task), (2) Technologies used, (3) Measurable impact IF YOU HAVE REAL METRICS. Format: '• [Action verb] [what] using [tech], [metric/impact if available]'. IMPORTANT: Only include metrics if they are real and verifiable. If you don't have specific numbers, focus on describing the technical work and technologies used.",
+  "example": "BEFORE: 'Worked on improving application performance and adding new features.'\n\nAFTER (with real metrics):\n'• Optimized database queries and implemented Redis caching, reducing API response time by 40% (500ms → 300ms)\n• Built Stripe payment integration processing 10K+ monthly transactions\n• Tech stack: React, Node.js, PostgreSQL, Redis'\n\nAFTER (without specific metrics - still good):\n'• Optimized database queries and implemented Redis caching to improve API response times\n• Built Stripe payment integration for processing transactions\n• Tech stack: React, Node.js, PostgreSQL, Redis'",
   "priority": "HIGH"
 }
 

@@ -177,6 +177,8 @@ const persistRoadmapArtifacts = async ({
           description?: string;
           estimatedHours?: number;
           difficulty?: string;
+          isPaid?: boolean;
+          price?: string;
         }>;
       }>;
       milestone?: {
@@ -213,7 +215,7 @@ const persistRoadmapArtifacts = async ({
             suggestedProjects: task.suggestedProjects && task.suggestedProjects.length > 0
               ? (task.suggestedProjects as unknown as Prisma.InputJsonValue)
               : Prisma.JsonNull,
-          } as any, // Type assertion needed until Prisma Client is regenerated
+          } as any, 
         });
         taskOrder += 1;
 
@@ -231,6 +233,8 @@ const persistRoadmapArtifacts = async ({
                   ? Math.round(resource.estimatedHours)
                   : null,
                 difficulty: normalizeDifficulty(resource.difficulty),
+                isPaid: resource.isPaid ?? null,
+                price: resource.price ?? null,
               },
             });
           }

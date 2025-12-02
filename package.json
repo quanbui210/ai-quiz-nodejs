@@ -32,7 +32,8 @@
     "scrape:jobs": "ts-node scripts/trigger-job-scraping.ts",
     "process:jobs": "ts-node scripts/trigger-job-processing.ts",
     "analyze:jobs": "ts-node scripts/analyze-existing-jobs.ts",
-    "regenerate:trends": "ts-node scripts/regenerate-market-trends.ts"
+    "regenerate:trends": "ts-node scripts/regenerate-market-trends.ts",
+    "migrate:resource-pricing": "ts-node scripts/migrate-resource-pricing.ts"
   },
   "author": "",
   "license": "ISC",

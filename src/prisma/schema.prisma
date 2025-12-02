@@ -735,6 +735,8 @@ model CareerResource {
   description    String?      @db.Text
   estimatedHours Int?
   difficulty     Difficulty
+  isPaid         Boolean?     // true for paid, false for free
+  price          String?      // e.g., "$49.99", "Free", "Subscription-based"
   isCompleted    Boolean      @default(false)
   completedAt    DateTime?
   createdAt      DateTime     @default(now())
@@ -744,6 +746,7 @@ model CareerResource {
 
   @@index([goalId])
   @@index([taskId])
+  @@index([isPaid])
 }
 
 model CareerMilestone {

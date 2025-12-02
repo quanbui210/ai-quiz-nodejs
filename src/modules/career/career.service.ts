@@ -381,6 +381,8 @@ export interface RoadmapResource {
   description?: string;
   estimatedHours?: number;
   difficulty?: Difficulty;
+  isPaid?: boolean; // true for paid courses, false for free, undefined if unknown
+  price?: string; // e.g., "$49.99", "Free", "Subscription-based", "€29.99"
 }
 
 export interface RoadmapTask {
@@ -552,7 +554,9 @@ Generate a structured learning plan as JSON with this exact structure:
               "resourceType": "COURSE" | "VIDEO" | "DOCUMENTATION" | "ARTICLE" | "BOOK" | "TUTORIAL" | "PROJECT_TEMPLATE",
               "description": "Resource description",
               "estimatedHours": number,
-              "difficulty": "BEGINNER" | "INTERMEDIATE" | "ADVANCED"
+              "difficulty": "BEGINNER" | "INTERMEDIATE" | "ADVANCED",
+              "isPaid": boolean, // true for paid, false for free, omit if unknown
+              "price": "string (e.g., '$49.99', 'Free', 'Subscription-based', '€29.99', 'Varies')" // Include price if known, omit if unknown
             }
           ]
         }
@@ -575,6 +579,22 @@ CRITICAL RULES FOR RESOURCES:
 6. For documentation, use official documentation URLs (e.g., docs.python.org, react.dev, nodejs.org/docs)
 7. If no real URL exists, leave it empty - it's better to have no URL than a fake one
 8. It's good to list course from Coursera, Udemy, freeCodeCamp, official docs like MDN, React docs, etc.
+
+RESOURCE PRICING AND UP-TO-DATE INFORMATION:
+1. **DIVIDE PAID VS FREE**: Always specify "isPaid": true for paid courses/resources, "isPaid": false for free resources
+2. **INCLUDE PRICE WHEN POSSIBLE**: For paid resources, include "price" field with approximate pricing:
+   - Examples: "$49.99", "€29.99", "Free", "Subscription-based", "Varies", "$99-199"
+   - For well-known platforms: Udemy courses typically $10-200, Coursera subscriptions $39-79/month, Pluralsight $29-45/month
+   - If price is unknown, omit the "price" field but still set "isPaid": true/false
+3. **PRIORITIZE UP-TO-DATE RESOURCES**: 
+   - Prefer recent courses (2023-2024) over older ones (2020 or earlier)
+   - For documentation, always prefer official, current documentation
+   - If suggesting older courses, note in description that they may need updates
+   - Check if course/resource is still available and active (avoid discontinued courses)
+4. **BALANCE PAID AND FREE**: Include a mix of both paid and free resources when possible:
+   - Free resources: Official documentation, freeCodeCamp, YouTube tutorials, GitHub tutorials, open-source learning paths
+   - Paid resources: Udemy, Coursera, Pluralsight, paid books, premium courses
+5. **NOTE ON ACCURACY**: Your knowledge is based on training data up to your knowledge cutoff. Prices and availability may have changed. When in doubt, use approximate pricing ranges or note "Price may vary" in the description.
 
 DETAILED TASK BREAKDOWN:
 - For each task, provide "subtopics": an array of 5-10 specific, actionable learning points
