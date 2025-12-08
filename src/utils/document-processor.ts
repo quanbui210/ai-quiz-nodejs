@@ -50,7 +50,6 @@ export async function extractTextFromFile(
       }
 
       default:
-        // Try to read as text for other text-based formats
         try {
           const defaultBuffer = await fs.readFile(filePath);
           return defaultBuffer.toString("utf-8");

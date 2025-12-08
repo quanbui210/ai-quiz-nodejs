@@ -16,9 +16,19 @@ import {
   generateSkillGapAnalysis,
   suggestQuizTopicsFromRoadmap,
 } from "./career.service";
+import {
+  registerJob,
+  unregisterJob,
+  cancelJob,
+} from "./career-job-manager";
 
 import { generateRoadmapPDF } from "../../utils/pdf-generator";
 import type { JobMarketInsights } from "../market/finnish-jobs.service";
+import OpenAI from "openai";
+
+const openaiClient = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const isValidEnumValue = <T extends Record<string, string>>(
   enumeration: T,
@@ -147,6 +157,105 @@ const recomputeGoalProgress = async (goalId: string): Promise<CareerGoal> => {
     data: { progress },
   });
 };
+
+/**
+ * Process roadmap generation asynchronously in the background
+ */
+async function processRoadmapGenerationAsync(
+  goalId: string,
+  roadmapInput: {
+    currentRole: string;
+    targetRole: string;
+    timeframe: Timeframe;
+    currentSkills: string[];
+    analysis: Awaited<ReturnType<typeof generateSkillGapAnalysis>> | null;
+    resumeText: string | null;
+    jobMarketInsights: JobMarketInsights | null;
+  },
+  abortSignal: AbortSignal,
+  targetDate: Date | null,
+  jobMarketInsights: JobMarketInsights | null,
+): Promise<void> {
+  try {
+    // Generate roadmap plan (with cancellation support)
+    const roadmap = await generateRoadmapPlan(roadmapInput, abortSignal);
+
+    // Check if cancelled after generation
+    if (abortSignal.aborted) {
+      console.log(`[Career Goal] Roadmap generation cancelled for goal ${goalId}`);
+      await prisma.careerGoal.update({
+        where: { id: goalId },
+        data: { status: GoalStatus.CANCELLED },
+      });
+      unregisterJob(goalId);
+      return;
+    }
+
+    const serializedJobMarketInsights = jobMarketInsights
+      ? (JSON.parse(JSON.stringify(jobMarketInsights)) as Prisma.InputJsonValue)
+      : Prisma.JsonNull;
+
+    // Update goal with roadmap
+    await prisma.careerGoal.update({
+      where: { id: goalId },
+      data: {
+        roadmapPlan: roadmap as unknown as Prisma.InputJsonValue,
+        jobMarketInsights: serializedJobMarketInsights,
+        jobMarketUpdatedAt: jobMarketInsights ? new Date() : null,
+        status: GoalStatus.ACTIVE, // Mark as ACTIVE when ready
+      } as any,
+    });
+
+    // Persist roadmap artifacts (tasks, resources, milestones)
+    const goal = await prisma.careerGoal.findUnique({
+      where: { id: goalId },
+      select: { startedAt: true },
+    });
+
+    if (goal) {
+      await persistRoadmapArtifacts({
+        goalId,
+        plan: roadmap,
+        startedAt: goal.startedAt,
+      });
+    }
+
+    // Increment usage count
+    const { incrementCareerRoadmapCount } = await import("../../utils/usage");
+    const careerGoal = await prisma.careerGoal.findUnique({
+      where: { id: goalId },
+      select: { userId: true },
+    });
+    if (careerGoal) {
+      await incrementCareerRoadmapCount(careerGoal.userId);
+    }
+
+    // Unregister job (completed successfully)
+    unregisterJob(goalId);
+    console.log(`[Career Goal] Roadmap generation completed for goal ${goalId}`);
+  } catch (error: any) {
+    unregisterJob(goalId);
+    
+    if (error.message?.includes("cancelled") || abortSignal.aborted) {
+      console.log(`[Career Goal] Roadmap generation cancelled for goal ${goalId}`);
+      await prisma.careerGoal.update({
+        where: { id: goalId },
+        data: { status: GoalStatus.CANCELLED },
+      });
+      return;
+    }
+
+    // Update goal status on error (keep as ACTIVE but log error)
+    console.error(`[Career Goal] Roadmap generation failed for goal ${goalId}:`, error);
+    await prisma.careerGoal.update({
+      where: { id: goalId },
+      data: {
+        status: GoalStatus.ACTIVE, // Keep as ACTIVE but roadmap generation failed
+      },
+    });
+    throw error;
+  }
+}
 
 const persistRoadmapArtifacts = async ({
   goalId,
@@ -388,22 +497,13 @@ export const createCareerGoal = async (
     // Users can get market insights from /api/jobs/trends endpoint
     const jobMarketInsights = null;
 
-    const roadmap = await generateRoadmapPlan({
-      currentRole: effectiveCurrentRole,
-      targetRole: normalizedTargetRole,
-      timeframe,
-      currentSkills: normalizedSkills,
-      analysis,
-      resumeText: resume?.parsedText || null,
-      jobMarketInsights,
-    });
-
     const targetDate = calculateTargetDate(timeframe, customWeeks);
 
     const serializedJobMarketInsights = jobMarketInsights
       ? (JSON.parse(JSON.stringify(jobMarketInsights)) as Prisma.InputJsonValue)
       : Prisma.JsonNull;
 
+    // Create goal with GENERATING status (will be updated when roadmap is ready)
     const goal = await prisma.careerGoal.create({
       data: {
         userId: req.user.id,
@@ -418,48 +518,55 @@ export const createCareerGoal = async (
         skillGapAnalysis: analysis
           ? (analysis.skillGapAnalysis as unknown as Prisma.InputJsonValue)
           : Prisma.JsonNull,
-        roadmapPlan: roadmap as unknown as Prisma.InputJsonValue,
+        roadmapPlan: Prisma.JsonNull, // Will be populated when generation completes
         jobMarketInsights: serializedJobMarketInsights,
         jobMarketUpdatedAt: jobMarketInsights ? new Date() : null,
         targetDate,
-        status: GoalStatus.ACTIVE,
+        status: GoalStatus.GENERATING, // Start with GENERATING status
       } as any,
     });
 
-    // Persist roadmap artifacts (tasks, resources, milestones)
-    await persistRoadmapArtifacts({
-      goalId: goal.id,
-      plan: roadmap,
-      startedAt: goal.startedAt,
-    });
+    // Register job for cancellation support
+    const abortController = registerJob(goal.id);
 
-    // Increment usage count
-    const { incrementCareerRoadmapCount } = await import("../../utils/usage");
-    await incrementCareerRoadmapCount(req.user.id);
-
-    // Fetch full goal with all relations
-    const fullGoal = await prisma.careerGoal.findUnique({
-      where: { id: goal.id },
-      include: {
-        tasks: true,
-        resources: true,
-        milestones: true,
+    void processRoadmapGenerationAsync(
+      goal.id,
+      {
+        currentRole: effectiveCurrentRole,
+        targetRole: normalizedTargetRole,
+        timeframe,
+        currentSkills: normalizedSkills,
+        analysis,
+        resumeText: resume?.parsedText || null,
+        jobMarketInsights,
       },
+      abortController.signal,
+      targetDate,
+      jobMarketInsights,
+    ).catch((error) => {
+      console.error(`[Career Goal] Background processing failed for goal ${goal.id}:`, error);
+      prisma.careerGoal.update({
+        where: { id: goal.id },
+        data: {
+          status: error.message?.includes("cancelled")
+            ? GoalStatus.CANCELLED
+            : GoalStatus.ACTIVE, 
+        },
+      }).catch(console.error);
     });
 
-    const responseGoal = fullGoal
-      ? {
-          ...fullGoal,
-          jobMarketInsights:
-            jobMarketInsights ??
-            (((fullGoal as any).jobMarketInsights as JobMarketInsights | null) ||
-              null),
-        }
-      : fullGoal;
-
+    // Return immediately - processing happens in background
     return res.status(201).json({
-      goal: responseGoal,
+      goal: {
+        ...goal,
+        status: GoalStatus.GENERATING,
+        tasks: [],
+        resources: [],
+        milestones: [],
+        jobMarketInsights: jobMarketInsights ?? null,
+      },
       jobMarketInsights: jobMarketInsights ?? null,
+      message: "Roadmap generation started. Poll /goals/:goalId to check status.",
     });
   } catch (error: any) {
     console.error("Create career goal error:", error);
@@ -1182,6 +1289,177 @@ export const exportCareerRoadmapPDF = async (
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to export roadmap PDF" });
     }
+  }
+};
+
+export const cancelRoadmapGeneration = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { goalId } = req.params;
+
+    if (!goalId) {
+      return res.status(400).json({ error: "Goal ID is required" });
+    }
+
+    // Verify goal belongs to user
+    const goal = await prisma.careerGoal.findFirst({
+      where: { id: goalId, userId: req.user.id },
+      select: { id: true, status: true },
+    });
+
+    if (!goal) {
+      return res.status(404).json({ error: "Career goal not found" });
+    }
+
+    // Check if goal is in GENERATING status
+    if (goal.status !== GoalStatus.GENERATING) {
+      return res.status(400).json({
+        error: "Roadmap generation is not in progress",
+        currentStatus: goal.status,
+      });
+    }
+
+    // Cancel the job
+    const cancelled = cancelJob(goalId);
+    
+    if (!cancelled) {
+      // Job might have already completed
+      const currentGoal = await prisma.careerGoal.findUnique({
+        where: { id: goalId },
+        select: { status: true },
+      });
+      
+      if (currentGoal?.status !== GoalStatus.GENERATING) {
+        return res.status(400).json({
+          error: "Roadmap generation is not in progress",
+          currentStatus: currentGoal?.status,
+        });
+      }
+    }
+
+    // Update goal status to CANCELLED
+    await prisma.careerGoal.update({
+      where: { id: goalId },
+      data: { status: GoalStatus.CANCELLED },
+    });
+
+    return res.json({
+      message: "Roadmap generation cancelled successfully",
+      goalId,
+    });
+  } catch (error: any) {
+    console.error("Cancel roadmap generation error:", error);
+    return res.status(500).json({ error: "Failed to cancel roadmap generation" });
+  }
+};
+
+export const validateTargetRole = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { targetRole } = req.body;
+
+    if (!targetRole || typeof targetRole !== "string" || targetRole.trim().length === 0) {
+      return res.status(400).json({
+        error: "targetRole is required and must be a non-empty string",
+      });
+    }
+
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: "OpenAI API key is not configured" });
+    }
+
+    const response = await openaiClient.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      temperature: 0.3,
+      messages: [
+        {
+          role: "system",
+          content: `You are a career role validation assistant. Your task is to validate if the target role is a real, legitimate job title in the technology/software industry.
+
+Return true if the role is a valid tech job title, otherwise return false and provide a reason why the role is not valid. Also provide a suggestion for a valid role if possible.
+
+Rules:
+- The role must be a real job title that exists in the technology/software industry
+- Accept common variations (e.g., "Software Engineer", "Software Developer", "Frontend Engineer", "Backend Developer")
+- Accept seniority levels (e.g., "Junior", "Mid", "Senior", "Lead", "Principal", "Staff", "Architect")
+- Accept specializations (e.g., "Frontend", "Backend", "Full Stack", "DevOps", "Data Engineer", "ML Engineer")
+- Reject nonsense strings, random characters, or non-job-title text (e.g., "abcd", "123", "asdfgh")
+- Reject non-tech job titles (e.g., "Doctor", "Teacher", "Chef")
+- Reject too generic terms (e.g., "Engineer" alone, "Developer" alone - suggest specific roles)
+- Reject company names or product names (e.g., "Google", "React" - suggest roles instead)
+
+Examples:
+- "Software Engineer" → true
+- "Senior Frontend Engineer" → true
+- "Full Stack Developer" → true
+- "DevOps Engineer" → true
+- "Data Scientist" → true
+- "abcd" → false, reason: "Not a valid job title"
+- "asdfgh" → false, reason: "Not a valid job title"
+- "Doctor" → false, reason: "Not a tech industry role, suggest: Software Engineer or Data Scientist"
+- "Engineer" → false, reason: "Too generic, suggest: Software Engineer, Frontend Engineer, or Backend Engineer"
+- "React" → false, reason: "This is a technology/framework, not a job title. Suggest: React Developer or Frontend Engineer"
+
+Respond in this format:
+- If valid: "true"
+- If invalid: "false. [reason]. Suggestion: [valid role]"`,
+        },
+        {
+          role: "user",
+          content: `Validate the target role: "${targetRole.trim()}"`,
+        },
+      ],
+    });
+
+    const validationContent = response.choices[0]?.message?.content;
+    if (!validationContent) {
+      return res.status(400).json({ error: "No validation response" });
+    }
+
+    const isValid = validationContent.toLowerCase().trim().startsWith("true");
+    
+    if (!isValid) {
+      // Extract reason and suggestion from response
+      const parts = validationContent.split("Suggestion:");
+      const reason = parts[0]?.replace("false.", "").trim() || validationContent;
+      const suggestion = parts[1]?.trim() || null;
+
+      return res.status(400).json({
+        error: reason,
+        isValid: false,
+        suggestion: suggestion || undefined,
+      });
+    }
+
+    return res.json({
+      isValid: true,
+      message: "Target role is valid for career roadmap generation",
+    });
+  } catch (error: any) {
+    console.error("Validate target role error:", error);
+    if (error.status === 429) {
+      return res.status(429).json({
+        error: "OpenAI API quota exceeded. Please check your billing.",
+      });
+    }
+    if (error.status === 401) {
+      return res.status(500).json({
+        error: "OpenAI API key is invalid",
+      });
+    }
+    return res.status(500).json({ error: "Failed to validate target role" });
   }
 };
 

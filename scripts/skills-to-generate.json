@@ -1,0 +1,653 @@
+{
+  "skills": [
+    {
+      "name": "Docker",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Kubernetes",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "AWS",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "React",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Next.js",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Node.js",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Express",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "TypeScript",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Python",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "PostgreSQL",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "MongoDB",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Redis",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Vue.js",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Angular",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Tailwind CSS",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GraphQL",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "REST API",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Git",
+      "category": "Tools",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "CI/CD",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Terraform",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Azure",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GCP",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "AWS Lambda",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Serverless",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Microservices",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "System Design",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Software Testing",
+      "category": "Testing",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Jest",
+      "category": "Testing",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Cypress",
+      "category": "Testing",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Performance Optimization",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Clean Code",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "React Native",
+      "category": "Mobile",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Flutter",
+      "category": "Mobile",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Swift",
+      "category": "Mobile",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Kotlin",
+      "category": "Mobile",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Java",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Spring Boot",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Go",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Rust",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "PHP",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Laravel",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Django",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Flask",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "SQL",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "MySQL",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Linux",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Webpack",
+      "category": "Tools",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Vite",
+      "category": "Tools",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GitHub Actions",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Svelte",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "AI/ML",
+      "category": "AI",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Machine Learning",
+      "category": "AI",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "TensorFlow",
+      "category": "AI",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "PyTorch",
+      "category": "AI",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Data Science",
+      "category": "AI",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Selenium",
+      "category": "Testing",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Playwright",
+      "category": "Testing",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "API Testing",
+      "category": "Testing",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Security",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "OAuth",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "JWT",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "WebSockets",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Message Queues",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "RabbitMQ",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Apache Kafka",
+      "category": "Backend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Elasticsearch",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "MongoDB Aggregation",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Database Design",
+      "category": "Database",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Docker Compose",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Jenkins",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Ansible",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Prometheus",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Grafana",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Nginx",
+      "category": "DevOps",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Service Design",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Domain-Driven Design",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Event-Driven Architecture",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "CQRS",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "SOLID Principles",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Design Patterns",
+      "category": "Architecture",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Web3",
+      "category": "Blockchain",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Solidity",
+      "category": "Blockchain",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Blockchain",
+      "category": "Blockchain",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "AWS S3",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "AWS EC2",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Azure Functions",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Azure Storage",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Azure Virtual Machines",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Azure DevOps",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GCP Cloud Functions",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GCP Cloud Storage",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GCP Compute Engine",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "GCP Cloud Run",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Cloud Architecture",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Serverless Architecture",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Firebase",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Supabase",
+      "category": "Cloud",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "WebAssembly",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Progressive Web Apps",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Three.js",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "D3.js",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "RxJS",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Redux",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Zustand",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "React Query",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Storybook",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "Accessibility",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    },
+    {
+      "name": "SEO",
+      "category": "Frontend",
+      "targetLevels": ["ADVANCED"],
+      "includeCertification": null
+    }
+  ]
+}
+

@@ -231,7 +231,6 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
       },
     });
 
-    // Prepare context for RAG if document is attached
     let contextChunks: any[] = [];
     let contextText = "";
 
@@ -244,23 +243,21 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
         let similarChunks: any[] = [];
         let similarityThreshold = 0.6; // Start with lower threshold
 
-        // Try with threshold 0.6, then 0.4, then 0.3
         for (const threshold of [0.6, 0.4, 0.3]) {
           similarChunks = await findSimilarChunks(
             session.documentId,
             queryEmbedding,
-            10, // Get more chunks
+            15, 
             threshold,
           );
           if (similarChunks.length > 0) break;
         }
 
-        // If still no chunks, get any chunks from the document
         if (similarChunks.length === 0) {
           const allChunks = await prisma.documentEmbedding.findMany({
             where: { documentId: session.documentId },
             orderBy: { chunkIndex: "asc" },
-            take: 10,
+            take: 15, 
             select: {
               id: true,
               chunkIndex: true,
@@ -280,11 +277,11 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
           similarity: chunk.similarity,
         }));
 
-        // Build context text for prompt (use more text per chunk)
+        // Build context text for prompt (use full chunk text, limit to 2000 chars per chunk to avoid token limits)
         contextText = similarChunks
           .map(
             (chunk, index) =>
-              `[Context ${index + 1}]: ${chunk.chunkText.substring(0, 800)}`,
+              `[Context ${index + 1}]: ${chunk.chunkText.substring(0, 2000)}`,
           )
           .join("\n\n");
       } catch (error: any) {
@@ -300,17 +297,20 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
 
     const systemPrompt =
       session.documentId && contextText
-        ? `You are an AI tutor helping a student understand a document. Use the following context from the document to answer questions accurately and thoroughly.
+        ? `You are an AI tutor helping a student understand a document. Use ONLY the following context from the document to answer questions accurately and thoroughly.
+
+CRITICAL: You MUST ONLY use information from the provided document context. Do NOT use your general knowledge unless the question is explicitly asking for general information that is not in the document.
 
 Context from document:
 ${contextText}
 
 Instructions:
-- Answer questions based on the document context provided above
+- Answer questions based ONLY on the document context provided above
 - Extract and present relevant information from the context
 - If the question asks about specific numbers, dates, or facts, search the context carefully
 - Be thorough and cite information from the context when relevant
-- If the answer truly cannot be found in the context, say "I don't have enough information in the document to answer this question."
+- If the answer cannot be found in the context, you MUST say: "I don't have enough information in the document to answer this question. The document context provided does not contain information about [topic]."
+- DO NOT make up information or use general knowledge if it's not in the document context
 - Be helpful, clear, and educational`
         : session.documentId
           ? "You are an AI tutor helping a student understand a document. However, the document content is not yet available. Please inform the user that the document is still being processed."

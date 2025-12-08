@@ -44,6 +44,8 @@ model User {
   interviewSessions InterviewSession[]
   careerGoals       CareerGoal[]
   jobMatches        UserJobMatch[]
+  skillMasteryGoals SkillMasteryGoal[]
+  skillMasteryQuizzes SkillMasteryQuiz[]
 }
 
 model Topic {
@@ -560,6 +562,7 @@ model CareerGoal {
   milestones CareerMilestone[]
   quizzes    Quiz[]
   quizSuggestions CareerQuizSuggestion[]
+  skillMasteryGoals SkillMasteryGoal[]
 
   @@index([userId])
   @@index([status])
@@ -773,10 +776,12 @@ enum Timeframe {
 }
 
 enum GoalStatus {
+  GENERATING
   ACTIVE
   PAUSED
   COMPLETED
   ARCHIVED
+  CANCELLED
 }
 
 enum TaskType {
@@ -803,4 +808,281 @@ enum ResourceType {
   BOOK
   TUTORIAL
   PROJECT_TEMPLATE
+}
+
+enum SkillMasteryStatus {
+  GENERATING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+  CANCELLED
+}
+
+enum SkillLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+// Normalized Skill reference table
+model Skill {
+  id          String   @id @default(uuid())
+  name        String   @unique // Normalized skill name (e.g., "Docker", "AWS", "React")
+  category    String?  // e.g., "Cloud", "Frontend", "Backend"
+  description String?  @db.Text
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  templates   SkillMasteryTemplate[]
+  goals       SkillMasteryGoal[]
+  quizTemplates SkillMasteryQuizTemplate[]
+  
+  @@index([name])
+  @@index([category])
+}
+
+model SkillMasteryTemplate {
+  id                  String              @id @default(uuid())
+  skillId             String?             // Foreign key to Skill (nullable during migration)
+  skillName           String?             // Temporary: will be removed after migration
+  skillCategory       String?
+  targetLevel         SkillLevel
+  includeCertification Boolean            @default(false)
+  
+  roadmapPlan         Json
+  overview            String
+  totalWeeks          Int
+  
+  isActive            Boolean             @default(true)
+  version             Int                 @default(1)
+  generatedAt         DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  
+  skill               Skill?              @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  goals               SkillMasteryGoal[]
+  quizTemplates       SkillMasteryQuizTemplate[]
+  
+  @@unique([skillId, targetLevel, includeCertification])
+  @@unique([skillName, targetLevel, includeCertification]) // Temporary unique constraint
+  @@index([skillId])
+  @@index([skillName]) // Temporary index
+  @@index([isActive])
+  @@index([skillCategory])
+}
+
+model SkillMasteryGoal {
+  id              String              @id @default(uuid())
+  userId          String
+  skillId         String?             // Foreign key to Skill (nullable during migration)
+  skillName       String?              // Temporary: will be removed after migration
+  skillCategory   String?
+  currentLevel    SkillLevel?
+  targetLevel     SkillLevel
+  status          SkillMasteryStatus  @default(GENERATING)
+  progress        Float               @default(0)
+  
+  roadmapPlan     Json?
+  overview        String?
+  totalWeeks      Int?
+  startedAt       DateTime            @default(now())
+  targetDate      DateTime?
+  completedAt     DateTime?
+  
+  careerGoalId    String?
+  careerGoal      CareerGoal?         @relation(fields: [careerGoalId], references: [id], onDelete: SetNull)
+  
+  templateId      String?
+  template        SkillMasteryTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  skill           Skill?              @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tasks           SkillMasteryTask[]
+  resources       SkillMasteryResource[]
+  milestones      SkillMasteryMilestone[]
+  concepts        SkillConcept[]
+  quizzes         SkillMasteryQuiz[]
+  
+  @@index([userId])
+  @@index([skillId])
+  @@index([skillName]) // Temporary index
+  @@index([status])
+  @@index([careerGoalId])
+  @@index([templateId])
+  @@index([userId, status])
+}
+
+model SkillMasteryTask {
+  id              String              @id @default(uuid())
+  goalId          String
+  phase           Int
+  title           String
+  description     String?
+  taskType        TaskType
+  estimatedHours  Int?
+  order           Int
+  status          TaskStatus          @default(PENDING)
+  dueDate         DateTime?
+  completedAt     DateTime?
+  
+  subtopics       Json?
+  suggestedProjects Json?
+  theory          Json?
+  examples        Json?
+  concepts        Json?
+  
+  goal            SkillMasteryGoal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  resources       SkillMasteryResource[]
+  
+  @@index([goalId])
+  @@index([goalId, phase])
+  @@index([goalId, status])
+  @@index([goalId, phase, status])
+  @@index([status])
+}
+
+model SkillMasteryResource {
+  id              String              @id @default(uuid())
+  goalId          String
+  taskId          String?
+  title           String
+  url             String?
+  description     String?
+  resourceType    ResourceType
+  estimatedHours  Int?
+  difficulty      Difficulty
+  isPaid          Boolean?
+  price           String?
+  
+  source          String?
+  lastVerified    DateTime?
+  isUpToDate      Boolean?
+  
+  goal            SkillMasteryGoal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  task            SkillMasteryTask?    @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  
+  @@index([goalId])
+  @@index([goalId, taskId])
+  @@index([taskId])
+}
+
+model SkillMasteryMilestone {
+  id              String              @id @default(uuid())
+  goalId          String
+  title           String
+  description     String?
+  targetDate      DateTime
+  completedAt     DateTime?
+  
+  goal            SkillMasteryGoal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  @@index([goalId])
+}
+
+model SkillConcept {
+  id              String              @id @default(uuid())
+  goalId          String
+  title           String
+  content         String
+  examples        Json?
+  relatedConcepts String[]
+  difficulty      Difficulty
+  order           Int
+  
+  goal            SkillMasteryGoal    @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  
+  @@index([goalId])
+}
+
+model SkillMasteryQuizTemplate {
+  id              String              @id @default(uuid())
+  skillId         String?             // Foreign key to Skill (nullable during migration)
+  skillName       String?             // Temporary: will be removed after migration
+  templateId      String?             // Foreign key to SkillMasteryTemplate (links quiz to roadmap)
+  phase           Int
+  title           String
+  description     String?
+  difficulty      Difficulty          @default(INTERMEDIATE)
+  
+  questions       SkillMasteryQuizQuestion[]
+  userQuizzes     SkillMasteryQuiz[]
+  
+  isActive        Boolean             @default(true)
+  version         Int                 @default(1)
+  generatedAt     DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  
+  skill           Skill?              @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  template        SkillMasteryTemplate? @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  @@unique([skillId, phase])
+  @@unique([skillName, phase]) // Temporary unique constraint
+  @@unique([templateId, phase])
+  @@index([skillId])
+  @@index([skillName]) // Temporary index
+  @@index([templateId])
+  @@index([isActive])
+}
+
+model SkillMasteryQuizQuestion {
+  id              String              @id @default(uuid())
+  templateId      String
+  question        String
+  type            QuestionType
+  options         Json?               // For multiple choice: ["Option A", "Option B", ...]
+  correctAnswer   String              // Answer or option index
+  explanation     String?             // Why this answer is correct
+  points          Int                 @default(10)
+  order           Int
+  
+  template        SkillMasteryQuizTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  
+  @@index([templateId])
+}
+
+model SkillMasteryQuiz {
+  id              String              @id @default(uuid())
+  userId          String
+  goalId          String
+  templateId      String
+  
+  title           String
+  phase           Int
+  status          QuizStatus          @default(PENDING)
+  score           Float?
+  totalQuestions  Int
+  correctAnswers  Int?
+  
+  startedAt       DateTime?
+  completedAt     DateTime?
+  
+  user            User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  goal            SkillMasteryGoal   @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  template        SkillMasteryQuizTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  attempts        SkillMasteryQuizAttempt[]
+  
+  @@index([userId])
+  @@index([goalId])
+  @@index([goalId, phase])
+  @@index([goalId, status])
+  @@index([templateId])
+  @@index([status])
+}
+
+model SkillMasteryQuizAttempt {
+  id              String              @id @default(uuid())
+  quizId          String
+  answers         Json                // { questionId: answer }
+  score           Float
+  correctCount    Int
+  totalQuestions  Int
+  completedAt     DateTime            @default(now())
+  
+  quiz            SkillMasteryQuiz    @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  @@index([quizId])
 }

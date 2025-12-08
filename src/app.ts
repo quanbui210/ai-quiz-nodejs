@@ -15,6 +15,7 @@ import documentRoutes from "./modules/document/document.routes";
 import chatRoutes from "./modules/chat/chat.routes";
 import interviewRoutes from "./modules/interview/interview.routes";
 import careerRoutes from "./modules/career/career.routes";
+import skillMasteryRoutes from "./modules/skill-mastery/skill-mastery.routes";
 import resumeRoutes from "./modules/resume/resume.routes";
 import userRoutes from "./modules/user/user.routes";
 import marketRoutes from "./modules/market/market.routes";
@@ -85,6 +86,7 @@ app.get("/", (req, res) => {
       chat: "/api/v1/chat",
       interview: "/api/v1/interview",
       career: "/api/v1/career",
+      skillMastery: "/api/v1/skill-mastery",
       resume: "/api/v1/resume",
       user: "/api/v1/user",
       market: "/api/v1/market",
@@ -110,6 +112,7 @@ app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/chat", chatRoutes);
 app.use("/api/v1/interview", interviewRoutes);
 app.use("/api/v1/career", careerRoutes);
+app.use("/api/v1/skill-mastery", skillMasteryRoutes);
 app.use("/api/v1/resume", resumeRoutes);
 app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/market", marketRoutes);

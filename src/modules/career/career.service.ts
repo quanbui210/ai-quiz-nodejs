@@ -435,6 +435,7 @@ export interface RoadmapInput {
 
 export const generateRoadmapPlan = async (
   input: RoadmapInput,
+  abortSignal?: AbortSignal,
 ): Promise<RoadmapPlan> => {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("OpenAI API key is not configured");
@@ -505,11 +506,18 @@ export const generateRoadmapPlan = async (
         }
       : null;
 
+    // Check if cancelled before making API call
+    if (abortSignal?.aborted) {
+      throw new Error("Roadmap generation was cancelled");
+    }
+
     const completion = await openai.chat.completions.create({
     model: DEFAULT_CAREER_MODEL,
     temperature: 0.45,
     max_tokens: 8000,
     response_format: { type: "json_object" },
+    // Note: OpenAI SDK doesn't directly support AbortSignal in v4,
+    // but we can check the signal before and after the call
     messages: [
       {
         role: "system",
@@ -639,6 +647,11 @@ Respond ONLY with valid JSON matching this structure.`,
       },
     ],
   });
+
+  // Check if cancelled after API call
+  if (abortSignal?.aborted) {
+    throw new Error("Roadmap generation was cancelled");
+  }
 
   const rawResponse = completion.choices[0]?.message?.content;
   

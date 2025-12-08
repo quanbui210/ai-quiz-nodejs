@@ -33,7 +33,10 @@
     "process:jobs": "ts-node scripts/trigger-job-processing.ts",
     "analyze:jobs": "ts-node scripts/analyze-existing-jobs.ts",
     "regenerate:trends": "ts-node scripts/regenerate-market-trends.ts",
-    "migrate:resource-pricing": "ts-node scripts/migrate-resource-pricing.ts"
+    "migrate:resource-pricing": "ts-node scripts/migrate-resource-pricing.ts",
+    "generate:skill-templates": "ts-node scripts/generate-skill-templates.ts",
+    "generate:skill-quizzes": "ts-node scripts/generate-skill-quizzes.ts",
+    "migrate:skill-normalization": "ts-node scripts/migrate-skill-normalization.ts"
   },
   "author": "",
   "license": "ISC",

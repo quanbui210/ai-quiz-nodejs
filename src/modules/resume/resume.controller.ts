@@ -13,6 +13,11 @@ import { Prisma } from "@prisma/client";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import OpenAI from "openai";
+
+const openaiClient = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const TEMP_DIR = path.join(os.tmpdir(), "resume-processing");
 fs.mkdir(TEMP_DIR, { recursive: true }).catch(console.error);
@@ -103,6 +108,77 @@ export const uploadResume = async (
   }
 };
 
+/**
+ * Validate that the extracted text is actually a resume/CV
+ * Uses OpenAI to check if the content contains typical resume elements
+ */
+async function validateResumeContent(text: string): Promise<boolean> {
+  try {
+    if (!process.env.OPENAI_API_KEY) {
+      console.warn("[Resume Validation] OpenAI API key not configured, skipping validation");
+      return true; // Skip validation if API key not available
+    }
+
+    // Truncate text to first 2000 characters for validation (to save tokens)
+    const textToValidate = text.substring(0, 2000);
+
+    const response = await openaiClient.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      temperature: 0.1,
+      messages: [
+        {
+          role: "system",
+          content: `You are a resume validation assistant. Your task is to determine if the provided text content is actually a resume/CV of a person.
+
+A valid resume typically contains:
+- Personal information (name, contact details, email, phone)
+- Work experience or employment history
+- Education background
+- Skills or technical competencies
+- Professional summary or objective (optional)
+- Projects or achievements (optional)
+
+Return "true" if the content appears to be a resume/CV, otherwise return "false" with a brief reason.
+
+Examples of valid resumes:
+- Contains name, email, work experience, education, skills
+- Contains professional summary, employment history, education
+- Contains contact info, experience, skills, certifications
+
+Examples of invalid content (return false):
+- Random text, articles, blog posts, documentation
+- Product descriptions, marketing materials
+- Academic papers, research documents
+- Books, novels, stories
+- Code snippets, technical documentation
+- Empty or mostly empty documents
+- Non-resume business documents
+
+Respond ONLY with "true" or "false. [reason]"`,
+        },
+        {
+          role: "user",
+          content: `Is this text content a resume/CV?\n\n${textToValidate}`,
+        },
+      ],
+    });
+
+    const validationContent = response.choices[0]?.message?.content?.toLowerCase().trim() || "";
+    const isValid = validationContent.startsWith("true");
+
+    if (!isValid) {
+      console.log(`[Resume Validation] Invalid resume content: ${validationContent}`);
+    }
+
+    return isValid;
+  } catch (error: any) {
+    console.error("[Resume Validation] Error validating resume content:", error);
+    // On error, allow the resume to proceed (fail open) to avoid blocking valid resumes
+    // Log the error for monitoring
+    return true;
+  }
+}
+
 async function processResumeAsync(
   resumeId: string,
   documentId: string,
@@ -124,6 +200,30 @@ async function processResumeAsync(
     const extractedText = await processDocument(tempPath, mimeType);
 
     await fs.unlink(tempPath).catch(console.error);
+
+    // Validate that the document content is actually a resume
+    if (extractedText.text) {
+      const isValidResume = await validateResumeContent(extractedText.text);
+      
+      if (!isValidResume) {
+        console.warn(`[Resume Processing] Document ${resumeId} does not appear to be a resume`);
+        await prisma.resume.update({
+          where: { id: resumeId },
+          data: {
+            status: "FAILED",
+            parsedText: null,
+          },
+        });
+        await prisma.document.update({
+          where: { id: documentId },
+          data: { 
+            status: "FAILED",
+            errorMessage: "The uploaded file does not appear to be a resume. Please upload a valid resume document (CV).",
+          },
+        });
+        throw new Error("Document does not appear to be a resume");
+      }
+    }
 
     await prisma.resume.update({
       where: { id: resumeId },
