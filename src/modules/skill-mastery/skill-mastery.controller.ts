@@ -459,7 +459,7 @@ export const createSkillMasteryGoal = async (
     const normalizedIncludeCertification = includeCertification || false;
 
     const skillId = await getOrCreateSkill(skillName.trim(), undefined);
-    
+
     const skill = await prisma.skill.findUnique({
       where: { id: skillId },
       select: { name: true },
