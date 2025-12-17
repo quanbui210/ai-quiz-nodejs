@@ -20,6 +20,7 @@ import {
   unregisterJob,
   cancelJob,
 } from "../career/career-job-manager";
+import { CreditService, Feature } from "../../services/credit.service";
 
 const isValidEnumValue = <T extends Record<string, string>>(
   enumeration: T,
@@ -365,10 +366,21 @@ export const createSkillMasteryGoal = async (
   req: AuthenticatedRequest,
   res: Response,
 ) => {
+  let creditTransactionId: string | undefined;
+  
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
+
+    // Deduct credits upfront (middleware already checked availability)
+    const { newBalance, transactionId } = await CreditService.deductCredits(
+      req.user.id,
+      Feature.SKILL_MASTERY_ROADMAP,
+      { action: "create_skill_mastery_roadmap" }
+    );
+    creditTransactionId = transactionId;
+    console.log(`[Skill Mastery] Deducted credits. New balance: ${newBalance}. Transaction: ${transactionId}`);
 
     const {
       skillName,
@@ -534,6 +546,22 @@ export const createSkillMasteryGoal = async (
     });
   } catch (error: any) {
     console.error("Create skill mastery goal error:", error);
+    
+    // Refund credits if generation failed
+    if (creditTransactionId && req.user?.id) {
+      try {
+        await CreditService.refundCredits(
+          req.user.id,
+          Feature.SKILL_MASTERY_ROADMAP,
+          "Skill mastery roadmap creation failed",
+          { error: error.message, skillName: req.body.skillName }
+        );
+        console.log(`[Skill Mastery] Refunded credits due to creation failure`);
+      } catch (refundError) {
+        console.error("[Skill Mastery] Failed to refund credits:", refundError);
+      }
+    }
+    
     return res.status(500).json({ error: "Failed to create skill mastery goal" });
   }
 };

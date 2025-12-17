@@ -58,7 +58,7 @@ export interface EvaluatedAnswer {
   weaknesses: string[];
   suggestions: string[];
   improvementTips?: string;
-  exampleAnswer?: string; // Example answer tailored to the user's response
+  exampleAnswer?: string; 
   starFormatScore?: {
     situation: number;
     task: number;
@@ -87,7 +87,8 @@ export const generateInterviewQuestion = async (
 
 IMPORTANT: 
 - Return ONLY ONE question object, NOT an array. The root object must have "question" and "category" fields directly.
-- Tailor the question to the specific industry (e.g., e-commerce, edtech, communications, security, advertising) if provided.
+- Consider difficulty level based on the location (country) of the interview. For example, if the country is in USA, the questions should be more difficult than if the country is in Finland, same applies for other countries. China and India should be more technical and difficult than in Europe for example. 
+- First 2 questions should be general position knowledge, can be technical, but from the third question onwards, the questions should be more specific to the industry, required skills and role description.
 - If requiredSkills are provided, use them to generate questions that test those specific skills. This takes priority over roleDescription.
 - If roleDescription is provided, use it to understand specific responsibilities, technologies, team context, and requirements.
 - If both requiredSkills and roleDescription are provided, combine them to create more targeted questions.
@@ -106,7 +107,6 @@ IMPORTANT:
         industry: input.industry || null,
         previousQuestions: input.previousQuestions,
         preferredCategory: input.preferredCategory || null,
-        resumeHighlights: input.resumeHighlights,
       }),
     },
   ];
@@ -210,7 +210,9 @@ IMPORTANT:
   * Includes specific examples and technical details where appropriate
   * Serves as a learning tool to help them understand what a strong answer looks like
 - Score should be fair and constructive
-- Provide actionable, specific feedback`,
+- Provide actionable, specific feedback
+
+`,
     },
     {
       role: "user" as const,
@@ -220,7 +222,6 @@ IMPORTANT:
         role: input.role,
         level: input.level,
         answer: input.answer,
-        resumeHighlights: input.resumeHighlights,
       }),
     },
   ];

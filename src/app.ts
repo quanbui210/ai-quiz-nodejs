@@ -21,6 +21,7 @@ import userRoutes from "./modules/user/user.routes";
 import marketRoutes from "./modules/market/market.routes";
 import jobCronRoutes from "./modules/jobs/job-cron.routes";
 import jobRoutes from "./modules/jobs/job.routes";
+import creditsRoutes from "./modules/credits/credits.route";
 import { handleWebhook } from "./modules/subscription/subscription.controller";
 
 
@@ -92,6 +93,7 @@ app.get("/", (req, res) => {
       market: "/api/v1/market",
       jobs: "/api/jobs",
       batch: "/api/batch",
+      credits: "/api/v1/credits",
     },
     notes: {
       market: "⚠️ /api/v1/market/insights is DEPRECATED - use /api/jobs/trends instead",
@@ -118,6 +120,7 @@ app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/market", marketRoutes);
 app.use("/api/batch", jobCronRoutes);
 app.use("/api/jobs", jobRoutes);
+app.use("/api/v1/credits", creditsRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

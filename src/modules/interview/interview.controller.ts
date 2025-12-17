@@ -12,6 +12,7 @@ import {
   generateInterviewQuestion,
   summarizeInterviewSession,
 } from "./interview.service";
+import { CreditService, Feature } from "../../services/credit.service";
 
 const DEFAULT_TOTAL_QUESTIONS = 8;
 
@@ -26,21 +27,12 @@ const isValidLevel = (level: string): level is InterviewLevel =>
 const isValidCategory = (value: string): value is QuestionCategory =>
   isEnumValue(QuestionCategory, value);
 
-const extractResumeHighlights = (resumeText?: string | null): string[] => {
-  if (!resumeText) {
-    return [];
-  }
-  return resumeText
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .slice(0, 8);
-};
-
 export const createInterviewSession = async (
   req: AuthenticatedRequest,
   res: Response,
 ) => {
+  let creditTransactionId: string | undefined;
+  
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -71,44 +63,38 @@ export const createInterviewSession = async (
         ? Math.min(questionCount, 20)
         : DEFAULT_TOTAL_QUESTIONS;
 
-    // Get user profile for prefilling
+    // Deduct credits upfront
+    try {
+      const { newBalance, transactionId } = await CreditService.deductCredits(
+        req.user.id,
+        Feature.INTERVIEW_SESSION,
+        { action: "create_interview_session" }
+      );
+      creditTransactionId = transactionId;
+      console.log(`[Interview Session] Created - Deducted credits. New balance: ${newBalance}. Transaction: ${transactionId}`);
+    } catch (error: any) {
+      console.error("[Interview Session] Credit deduction failed:", error);
+      return res.status(402).json({
+        error: "Insufficient credits",
+        message: error.message || "Not enough credits to create interview session",
+      });
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
-        currentSkills: true,
-        onboardingResumeId: true,
         yearsOfExperience: true,
         industry: true,
       },
     });
 
-    // Use provided resumeId or fall back to onboarding resume
-    let effectiveResumeId = resumeId || user?.onboardingResumeId || null;
-    let resume: { id: string; parsedText: string | null } | null = null;
-    if (effectiveResumeId) {
-      resume = await prisma.resume.findFirst({
-        where: { id: effectiveResumeId, userId: req.user.id },
-        select: { id: true, parsedText: true },
-      });
-      if (!resume) {
-        return res.status(404).json({ error: "Resume not found" });
-      }
-    }
-
-    // Normalize requiredSkills
     let normalizedRequiredSkills: string[] = [];
     if (Array.isArray(requiredSkills)) {
       normalizedRequiredSkills = requiredSkills
         .map((skill: unknown) => (typeof skill === "string" ? skill.trim() : null))
         .filter((skill): skill is string => Boolean(skill && skill.length > 0));
     }
-
-    // Use saved currentSkills if requiredSkills not provided and we have saved skills
-    if (normalizedRequiredSkills.length === 0 && user?.currentSkills && user.currentSkills.length > 0) {
-      normalizedRequiredSkills = user.currentSkills;
-    }
-
-    // Use saved yearsOfExperience and industry if not provided
+  
     const effectiveYearsOfExperience = yearsOfExperience !== undefined && yearsOfExperience !== null
       ? Number(yearsOfExperience)
       : (user?.yearsOfExperience || null);
@@ -128,7 +114,7 @@ export const createInterviewSession = async (
         yearsOfExperience: effectiveYearsOfExperience,
         country: country ? String(country).trim() : null,
         industry: effectiveIndustry,
-        resumeId: resume?.id,
+        resumeId: resumeId || null, // Store resumeId if provided, but don't fetch it
         totalQuestions: parsedQuestionCount,
       },
     });
@@ -142,7 +128,6 @@ export const createInterviewSession = async (
       country: session.country,
       industry: session.industry,
       previousQuestions: [],
-      resumeHighlights: extractResumeHighlights(resume?.parsedText),
     });
 
     const questionRecord = await prisma.interviewQuestion.create({
@@ -168,6 +153,19 @@ export const createInterviewSession = async (
     });
   } catch (error: any) {
     console.error("Create interview session error:", error);
+    
+    // Refund credits if session creation failed
+    if (creditTransactionId && req.user?.id) {
+      await CreditService.refundCredits(
+        req.user.id,
+        Feature.INTERVIEW_SESSION,
+        "Interview session creation failed",
+        { transactionId: creditTransactionId }
+      ).catch((refundError) => {
+        console.error("[Interview Session] Failed to refund credits:", refundError);
+      });
+    }
+    
     return res
       .status(500)
       .json({ error: "Failed to create interview session" });
@@ -279,9 +277,6 @@ export const generateNextInterviewQuestion = async (
         questions: {
           orderBy: { order: "asc" },
         },
-        resume: {
-          select: { parsedText: true },
-        },
       },
     });
 
@@ -316,7 +311,6 @@ export const generateNextInterviewQuestion = async (
         preferredCategory && isValidCategory(preferredCategory)
           ? (preferredCategory as QuestionCategory)
           : undefined,
-      resumeHighlights: extractResumeHighlights(session.resume?.parsedText),
     });
 
     const questionRecord = await prisma.interviewQuestion.create({
@@ -370,13 +364,7 @@ export const submitInterviewAnswer = async (
         },
       },
       include: {
-        session: {
-          include: {
-            resume: {
-              select: { parsedText: true },
-            },
-          },
-        },
+        session: true,
         answers: {
           orderBy: { answeredAt: "desc" },
           take: 1,
@@ -422,9 +410,6 @@ export const submitInterviewAnswer = async (
       question: question.question,
       category: question.type,
       answer: answer.trim(),
-      resumeHighlights: extractResumeHighlights(
-        question.session.resume?.parsedText,
-      ),
     });
 
     await prisma.interviewAnswer.update({

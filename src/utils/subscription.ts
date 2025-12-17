@@ -2,6 +2,71 @@ import prisma from "./prisma";
 import { SubscriptionStatus } from "@prisma/client";
 import { stripe } from "./stripe";
 
+
+function getCreditAllocationFromPlan(
+  planName: string,
+  plan: { stripeProductId?: string | null; stripePriceId?: string | null }
+): { creditsPerMonth: number; maxRolloverCredits: number } {
+  const PLAN_CREDIT_MAPPING: Record<string, { creditsPerMonth: number; maxRolloverCredits: number }> = {
+    "Free": { creditsPerMonth: 50, maxRolloverCredits: 0 },
+    "free": { creditsPerMonth: 50, maxRolloverCredits: 0 },
+    "default": { creditsPerMonth: 50, maxRolloverCredits: 0 },
+    "Pro": { creditsPerMonth: 100, maxRolloverCredits: 50 },
+    "pro": { creditsPerMonth: 100, maxRolloverCredits: 50 },
+    "Premium": { creditsPerMonth: 200, maxRolloverCredits: 100 },
+    "premium": { creditsPerMonth: 200, maxRolloverCredits: 100 },
+  };
+
+  const normalizedName = planName.trim();
+  if (PLAN_CREDIT_MAPPING[normalizedName]) {
+    return PLAN_CREDIT_MAPPING[normalizedName];
+  }
+
+  // Default to Free tier
+  return { creditsPerMonth: 50, maxRolloverCredits: 0 };
+}
+
+
+async function getCreditAllocationFromStripe(
+  plan: { stripeProductId?: string | null; stripePriceId?: string | null }
+): Promise<{ creditsPerMonth: number; maxRolloverCredits: number } | null> {
+  try {
+    let product: any = null;
+
+    if (plan.stripeProductId) {
+      product = await stripe.products.retrieve(plan.stripeProductId);
+    } else if (plan.stripePriceId) {
+      const price = await stripe.prices.retrieve(plan.stripePriceId, {
+        expand: ["product"],
+      });
+      const productData = price.product;
+      if (productData && typeof productData !== "string" && !productData.deleted) {
+        product = productData;
+      }
+    }
+
+    if (product && product.metadata) {
+      const creditsPerMonth = product.metadata.creditsPerMonth
+        ? parseInt(product.metadata.creditsPerMonth, 10)
+        : null;
+      const maxRolloverCredits = product.metadata.maxRolloverCredits
+        ? parseInt(product.metadata.maxRolloverCredits, 10)
+        : null;
+
+      if (creditsPerMonth !== null) {
+        return {
+          creditsPerMonth,
+          maxRolloverCredits: maxRolloverCredits ?? 0,
+        };
+      }
+    }
+  } catch (error: any) {
+    console.warn("Failed to get credit allocation from Stripe:", error.message);
+  }
+
+  return null;
+}
+
 export const getOrCreateDefaultSubscription = async (userId: string) => {
   const existing = await prisma.userSubscription.findUnique({
     where: { userId },
@@ -20,6 +85,14 @@ export const getOrCreateDefaultSubscription = async (userId: string) => {
     throw new Error("No default subscription plan found");
   }
 
+  // Determine credit allocation for default plan
+  // Try Stripe metadata first, then fallback to plan name
+  let creditAllocation = await getCreditAllocationFromStripe(defaultPlan);
+  if (!creditAllocation) {
+    creditAllocation = getCreditAllocationFromPlan(defaultPlan.name, defaultPlan);
+  }
+  const { creditsPerMonth, maxRolloverCredits } = creditAllocation;
+
   const subscription = await prisma.userSubscription.create({
     data: {
       userId,
@@ -32,6 +105,13 @@ export const getOrCreateDefaultSubscription = async (userId: string) => {
       maxResumes: defaultPlan.maxResumes,
       allowedModels: defaultPlan.allowedModels,
       status: SubscriptionStatus.ACTIVE,
+      creditsPerMonth,
+      currentCredits: creditsPerMonth,
+      maxRolloverCredits,
+      creditsUsedThisMonth: 0,
+      totalCreditsUsed: 0,
+      currentPeriodStart: new Date(),
+      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
     },
     include: { plan: true },
   });
@@ -66,6 +146,8 @@ export const updateSubscriptionFromPlan = async (
     maxInterviewSessionsPerMonth?: number;
     maxResumes?: number;
     allowedModels?: string[];
+    creditsPerMonth?: number;
+    maxRolloverCredits?: number;
   } = {};
 
   try {
@@ -95,6 +177,13 @@ export const updateSubscriptionFromPlan = async (
               .map((m: string) => m.trim());
             limitsFromStripe.allowedModels = models.length > 0 ? models : plan.allowedModels;
           }
+        }
+        // Get credit allocation from Stripe metadata
+        if (product.metadata.creditsPerMonth) {
+          limitsFromStripe.creditsPerMonth = parseInt(product.metadata.creditsPerMonth, 10);
+        }
+        if (product.metadata.maxRolloverCredits) {
+          limitsFromStripe.maxRolloverCredits = parseInt(product.metadata.maxRolloverCredits, 10);
         }
       }
     } else if (plan.stripePriceId) {
@@ -127,11 +216,34 @@ export const updateSubscriptionFromPlan = async (
             limitsFromStripe.allowedModels = models.length > 0 ? models : plan.allowedModels;
           }
         }
+        if (productData.metadata.creditsPerMonth) {
+          limitsFromStripe.creditsPerMonth = parseInt(productData.metadata.creditsPerMonth, 10);
+        }
+        if (productData.metadata.maxRolloverCredits) {
+          limitsFromStripe.maxRolloverCredits = parseInt(productData.metadata.maxRolloverCredits, 10);
+        }
       }
     }
   } catch (error: any) {
     console.warn(`Failed to fetch Stripe metadata for plan ${planId}, using database values:`, error.message);
   }
+
+  // Determine credit allocation
+  let creditAllocation: { creditsPerMonth: number; maxRolloverCredits: number };
+  if (limitsFromStripe.creditsPerMonth !== undefined) {
+    creditAllocation = {
+      creditsPerMonth: limitsFromStripe.creditsPerMonth,
+      maxRolloverCredits: limitsFromStripe.maxRolloverCredits ?? 0,
+    };
+  } else {
+    // Fallback to plan name mapping
+    creditAllocation = getCreditAllocationFromPlan(plan.name, plan);
+  }
+
+  // Get existing subscription to preserve current credits if they exist
+  const existingSubscription = await prisma.userSubscription.findUnique({
+    where: { userId },
+  });
 
   // Use Stripe metadata if available, otherwise fallback to database values
   const subscription = await prisma.userSubscription.update({
@@ -145,6 +257,13 @@ export const updateSubscriptionFromPlan = async (
       maxInterviewSessionsPerMonth: limitsFromStripe.maxInterviewSessionsPerMonth ?? plan.maxInterviewSessionsPerMonth,
       maxResumes: limitsFromStripe.maxResumes ?? plan.maxResumes,
       allowedModels: limitsFromStripe.allowedModels ?? plan.allowedModels,
+      // Update credit fields
+      creditsPerMonth: creditAllocation.creditsPerMonth,
+      maxRolloverCredits: creditAllocation.maxRolloverCredits,
+      // Only update currentCredits if it's 0 or null (preserve existing credits)
+      currentCredits: existingSubscription?.currentCredits && existingSubscription.currentCredits > 0
+        ? existingSubscription.currentCredits
+        : creditAllocation.creditsPerMonth,
     },
     include: { plan: true },
   });

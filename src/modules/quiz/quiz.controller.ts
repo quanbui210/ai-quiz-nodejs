@@ -12,6 +12,7 @@ import {
   Question,
   Prisma,
 } from "@prisma/client";
+import { CreditService, Feature } from "../../services/credit.service";
 
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -442,6 +443,8 @@ export const createQuiz = async (
   req: Request & { user?: any },
   res: Response,
 ) => {
+  let creditTransactionId: string | undefined;
+  
   try {
     const {
       title,
@@ -457,6 +460,14 @@ export const createQuiz = async (
     if (!req.user || !req.user.id) {
       return res.status(401).json({ error: "User not authenticated" });
     }
+
+    const { newBalance, transactionId } = await CreditService.deductCredits(
+      req.user.id,
+      Feature.QUIZ_GENERATION,
+      { action: "create_quiz", title, difficulty, questionCount }
+    );
+    creditTransactionId = transactionId;
+    console.log(`[Quiz] Deducted credits. New balance: ${newBalance}. Transaction: ${transactionId}`);
 
     if (!title || typeof title !== "string" || title.trim().length === 0) {
       return res
@@ -733,6 +744,21 @@ export const createQuiz = async (
     return res.status(201).json(safeQuiz);
   } catch (error: any) {
     console.error("Quiz creation error:", error);
+    
+    if (creditTransactionId && req.user?.id) {
+      try {
+        await CreditService.refundCredits(
+          req.user.id,
+          Feature.QUIZ_GENERATION,
+          "Quiz creation failed",
+          { error: error.message, title: req.body.title }
+        );
+        console.log(`[Quiz] Refunded credits due to creation failure`);
+      } catch (refundError) {
+        console.error("[Quiz] Failed to refund credits:", refundError);
+      }
+    }
+    
     return res
       .status(500)
       .json({ error: "Failed to create quiz", message: error.message });

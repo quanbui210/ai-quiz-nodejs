@@ -432,6 +432,48 @@ export const getCurrentUser = async (
       },
     });
 
+    // Get subscription with credit data
+    const subscription = await prisma.userSubscription.findUnique({
+      where: { userId: req.user.id },
+      select: {
+        creditsPerMonth: true,
+        currentCredits: true,
+        creditsUsedThisMonth: true,
+        totalCreditsUsed: true,
+        maxRolloverCredits: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        plan: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    // Calculate computed fields for frontend
+    const credits = subscription
+      ? {
+          creditsPerMonth: subscription.creditsPerMonth,
+          currentCredits: subscription.currentCredits,
+          creditsUsedThisMonth: subscription.creditsUsedThisMonth,
+          totalCreditsUsed: subscription.totalCreditsUsed,
+          maxRolloverCredits: subscription.maxRolloverCredits,
+          utilizationRate:
+            subscription.creditsPerMonth > 0
+              ? (subscription.creditsUsedThisMonth / subscription.creditsPerMonth) * 100
+              : 0,
+          daysUntilReset: subscription.currentPeriodEnd
+            ? Math.ceil(
+                (subscription.currentPeriodEnd.getTime() - Date.now()) /
+                  (1000 * 60 * 60 * 24)
+              )
+            : null,
+          resetDate: subscription.currentPeriodEnd,
+        }
+      : null;
+
     return res.json({
       user: req.user,
       isAdmin: Boolean(adminProfile),
@@ -441,6 +483,12 @@ export const getCurrentUser = async (
             permissions: adminProfile.permissions,
           }
         : undefined,
+      subscription: subscription
+        ? {
+            plan: subscription.plan,
+            credits,
+          }
+        : null,
     });
   } catch (error) {
     return res.status(500).json({ error: "Failed to get user" });

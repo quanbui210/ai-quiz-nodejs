@@ -9,7 +9,6 @@ const openai = observeOpenAI(
   }),
 );
 
-// Use gpt-3.5-turbo for job matching to avoid rate limits (higher TPM limits)
 const DEFAULT_MODEL = process.env.OPENAI_JOB_MATCHING_MODEL || "gpt-3.5-turbo";
 
 interface JobMatchResult {
@@ -120,7 +119,6 @@ async function analyzeJobMatchWithLLM(params: {
     console.log(`[Job Matching] CV text provided (${cvText.length} chars) for job ${job.id}`);
   }
 
-  // Prepare user profile data
   const userProfile = {
     skills: userSkills,
     experienceYears: userExperienceYears,
@@ -129,7 +127,6 @@ async function analyzeJobMatchWithLLM(params: {
     currentPosition: userCurrentPosition,
   };
 
-  // Prepare job requirements
   const jobRequirements = {
     title: job.title,
     company: job.company,
@@ -144,110 +141,118 @@ async function analyzeJobMatchWithLLM(params: {
 
   const completion = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
-    temperature: 0.3,
+    temperature: 0.4, 
     max_tokens: 2000,
     response_format: { type: "json_object" },
     messages: [
       {
         role: "system",
-        content: `You are an expert career match analyst. Analyze how well a candidate's profile matches a job posting and provide a comprehensive match assessment.
+        content: `You are an expert career match analyst. Analyze how well a candidate's profile matches a job posting and provide a nuanced, differentiated match assessment.
 
-CRITICAL: TITLE/ROLE MATCHING IS THE MOST IMPORTANT FACTOR!
+CRITICAL: Your goal is to provide PRECISE, DIFFERENTIATED scores that help candidates understand which jobs are better matches. Avoid clustering scores around the same value.
 
-STEP 1: FIRST check if the job title matches the candidate's current position/role type, also check for experience level AND management level in title.
+SCORING PHILOSOPHY:
+- Use the FULL range 0-100, not just 30-50
+- Differentiate clearly between poor (0-30), weak (30-50), moderate (50-70), good (70-85), and excellent (85-100) matches
+- Each job should have a UNIQUE score based on its specific requirements vs candidate's profile
+- Be nuanced: small differences in fit should result in different scores
+- Don't give the same score to multiple jobs.
 
-ROLE TYPE MATCHING:
-- If candidate is "Software Engineer", "Frontend Engineer", "Backend Engineer", "Full Stack Developer", "Software Developer" → ONLY match with similar engineering/development roles
-- If candidate is "Product Owner", "Product Manager", "Business Analyst" → ONLY match with product/business roles
-- If candidate is "Data Engineer", "Data Scientist", "ML Engineer" → ONLY match with data/ML roles
-- DO NOT match Software Engineer with Product Owner, Manager, Designer, etc. (different career paths)
-- If roles are incompatible (e.g., Engineer vs Product Owner), return matchScore: 0-30 and explain this is a different career path
-- IF candicate has "Full Stack Developer / Frontend Developer / Backend Developer" in their current position/title, then match with "Full Stack Developer / Frontend Developer / Backend Developer or Software Developer/Engineer role with tech stacks related to webb, full stack, frontend, backend" role.
-- IF candicate has "Embedded, Automation or Cloud or something, AI or something" in their current position/title, then match with "Embedded, Automation, Cloud, AI or AI software engineer with the tech stacks related to embeeded, automation, cloud, AI or AI software engineering" role.
-- IF candicate has "UX Designer" in their current position/title, then match with "UX Designer" role.
-- IF candidate has "Cyber Security Engineer" in their current position/title, then match with "Cyber Security Engineer" role.
-- If candidate has "DevOps Engineer" in their current position/title, then match with "DevOps Engineer" role.
-- If candidate has "Data Engineer" in their current position/title, then match with "Data Engineer" role.
-- If candidate has "Data Scientist" in their current position/title, then match with "Data Scientist" role.
-- If candidate has "ML Engineer" in their current position/title, then match with "ML Engineer" role.
-- If candidate has "AI Engineer" in their current position/title, then match with "AI Engineer" role.
+STEP 1: ROLE COMPATIBILITY CHECK
 
-MANAGEMENT ROLE DETECTION (CRITICAL):
-- If job title contains: "Manager", "Lead", "Senior", "Director", "Head of", "Principal", "Staff", "Architect" (in management context), "Engineering Manager", "Tech Lead", "Team Lead", "Engineering Lead" → This is a MANAGEMENT/LEADERSHIP role
-- Check if candidate's current position/title contains management indicators: "Manager", "Lead", "Senior", "Director", "Head", "Principal", "Staff", "Architect", "Team Lead", "Tech Lead"
-- If job is a MANAGEMENT role but candidate's title does NOT indicate management experience:
-  * Return matchScore: 20-40 (major penalty for management role mismatch)
-  * In titleMatch explanation, explicitly state: "This is a management/leadership role requiring team management, leadership, and people management experience. Your current position as [candidate title] does not indicate management experience, which is a significant gap for this role."
-  * In matchExplanation.summary, mention: "This role requires management experience which you may not have."
-  * In recommendations, suggest: "Consider gaining leadership/management experience before applying to management roles."
-- If job is a MANAGEMENT role AND candidate has management experience → Can score higher (50-100) based on other factors
-- If job is NOT a management role AND candidate has management experience → This is fine, can score normally
+Role Type Matching (Primary Filter):
+- Software/Full Stack/Frontend/Backend Engineer/Developer → Match with similar engineering/dev roles
+- Product Owner/Manager, Business Analyst → Match with product/business roles  
+- Data Engineer/Scientist, ML/AI Engineer → Match with data/ML/AI roles
+- DevOps/Cloud/Security Engineer → Match with infrastructure/security roles
+- Designer (UX/UI) → Match with design roles
 
-STEP 2: Only if roles are compatible, then analyze:
-1. Calculate a match score (0-100) based on skills, experience, education, language
-2. Identify matching and missing skills (must-have and nice-to-have)
-3. Assess experience, education, and language matches
-4. Generate a detailed explanation with strengths, gaps, and recommendations
+Role Mismatch Penalties:
+- Completely different career path (Engineer → Product Owner): 0-25 points
+- Different specialization (Frontend → Data Engineer): 15-35 points
+- Related but different (Backend → DevOps): 40-60 points
 
-CRITICAL SOFT SKILLS RULE: NEVER list soft skills (Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, Time management, Adaptability, Critical thinking) as missing skills. These are demonstrated through work experience and interviews, not listed on CVs. Most professionals have these skills even if not explicitly mentioned. Only focus on TECHNICAL skills when identifying gaps. Soft skills should be assumed present based on the candidate's work experience.
-FOR EXAMPLE, my current position is "Full Stack Developer" and in my resume I listed that I have 2 years of experience in Full Stack Development. But the job title is "Senior Full Stack Developer". In this case, the match score should be 0-45 because the experience level is not matching the job title. If the job title is Product Owner, Mobile Developer, Data Engineer or similar, then the match score should be 0-20 because the role is different.
-CRITICAL RULES - SCORING PRIORITY:
-1. TITLE/ROLE MATCHING: This is the PRIMARY factor. Incompatible roles = very low score (0-30)
-2. EXPERIENCE MATCHING: This is the SECOND MOST IMPORTANT factor after role matching!
-   - Experience gap MUST significantly impact the score:
-     * 0-1 years gap (meets or slightly below): Can score 70-100
-     * 2 years gap: Can score 50-70 (significant penalty)
-     * 3 years gap: Can score 30-50 (major penalty)
-     * 4+ years gap: Can score 20-40 (very major penalty)
-   - A candidate with 2 years experience should ALWAYS score HIGHER for a 3-year role than a 5-year role
-   - Example: 2 YOE candidate → 3 YOE role = 55-65%, 5 YOE role = 35-45% (NOT the reverse!)
-3. SKILL MATCHING: Important but secondary to experience
-4. EDUCATION & LANGUAGE: Supporting factors
+Seniority Level Matching:
+- Job title contains "Senior/Lead/Principal/Staff/Manager/Director/Head" = Leadership role
+- Check if candidate's title also indicates this level
+- Leadership role without leadership experience: -30 to -50 points penalty
+- Overqualified (Senior applying to Junior): Can still score 60-80 if interested in role
 
-SCORING FORMULA (approximate):
-- Base score starts from experience match (see above ranges)
-- Then adjust based on skill match percentage:
-  * 80%+ skills match: +10-15 points
-  * 60-79% skills match: +5-10 points
-  * 40-59% skills match: 0 points
-  * <40% skills match: -5-10 points
-- Apply 1.15x motivation boost (cap at 100)
-- Final score should reflect: Experience gap is MORE important than skill gaps
-- SKILL FILTERING - CRITICAL RULES:
-  * IGNORE common/universal tools: "Git", "Vite", "npm", "yarn", "CI/CD" (every developer has these)
-  * NEVER LIST VAGUE/GENERIC TERMS AS MISSING: DO NOT list generic terms like "Engineering", "Software Development", "Development", "Programming", "Coding", "Technical Skills", "Software Engineering", "Engineering Expertise", "Development Experience" - these are too vague and not actionable. Only list SPECIFIC, CONCRETE technical skills.
-  * NEVER LIST SOFT SKILLS AS MISSING: Soft skills like "Problem Solving", "Communication", "Interpersonal skills", "Organizational skills", "Attention to detail", "Teamwork", "Leadership", "Time management", "Adaptability", "Critical thinking" are demonstrated through work experience and interviews, NOT listed on CVs. Most candidates have these skills even if not explicitly mentioned. DO NOT include these in missingMustHave or missingNiceToHave arrays. DO NOT mention them in gaps or skillAnalysis.
-  * IGNORE minor UI/state libraries: "MUI" (Material-UI), "Jotai", "Zustand", "Redux Toolkit" - these are minor tools, not core requirements
-  * FOCUS ON SPECIFIC TECHNICAL SKILLS ONLY: Only list SPECIFIC, CONCRETE technical skills as missing. Examples of VALID missing skills: "React", "Python", "Docker", "Kubernetes", "PostgreSQL", "AWS", "TypeScript", "Jest", "Node.js", "MongoDB". Examples of INVALID (too vague): "Engineering", "Software Development", "Development", "Programming", "Technical Skills".
-  * SKILLS MUST BE ACTIONABLE: Missing skills should be specific technologies, frameworks, or tools that the candidate can learn. Generic terms like "Engineering" or "Software Development" are NOT actionable and should NEVER be listed.
-- IMPORTANT TECHNICAL SKILLS TO CONSIDER: Testing frameworks (Jest, Vitest, Cypress, Playwright), core frameworks (React, Vue, Angular), languages (TypeScript, Python, Java, C++), platforms (AWS, Azure, GCP), databases (PostgreSQL, MongoDB), specific tools (Docker, Kubernetes, Terraform)
-- Remember: Soft skills are assumed to be present based on work experience. Only specific, concrete technical skill gaps matter for matching. Vague terms like "Engineering" are meaningless and should never appear in missing skills.
-- Vector similarity (0-1) indicates semantic match - factor this into the score
-- Provide constructive, positive feedback even for lower matches
-- Be specific about which skills match/missing (only important ones)
-- Give actionable recommendations
+STEP 2: EXPERIENCE LEVEL ANALYSIS (High Impact)
+
+Calculate experience gap = |Required YOE - Candidate YOE|
+
+Experience Scoring (use as BASE score):
+- Perfect match (0 gap): Start at 85-95
+- Slightly under (1 year gap): Start at 70-85
+- Moderately under (2 years gap): Start at 55-70
+- Significantly under (3 years gap): Start at 40-55
+- Very under (4+ years gap): Start at 25-40
+- Overqualified (1-2 years over): Start at 75-90 (they can do the job easily)
+- Very overqualified (3+ years over): Start at 60-75 (may be bored/overqualified)
+
+STEP 3: SKILL MATCHING (Moderate Impact)
+
+Calculate skill match percentage:
+- Must-have skills matched / Total must-have skills = Must-have %
+- Nice-to-have skills matched / Total nice-to-have skills = Nice-to-have %
+
+Skill Score Adjustments (add/subtract from base):
+- 90-100% must-haves + 70%+ nice-to-haves: +10 to +15 points
+- 80-89% must-haves + 50%+ nice-to-haves: +5 to +10 points
+- 70-79% must-haves: +0 to +5 points
+- 50-69% must-haves: -5 to -10 points
+- <50% must-haves: -15 to -25 points
+
+IGNORE these when matching:
+- Common tools: Git, GitHub, npm, yarn, Vite, Jira, Slack
+- Soft skills: Communication, Problem Solving, Teamwork, Leadership (assumed present)
+- Vague terms: "Engineering", "Development", "Programming" (too generic)
+- Minor libraries: MUI, Zustand, Jotai (nice but not critical)
+
+STEP 4: ADDITIONAL FACTORS (Minor Impact)
+
+- Education match: +/-5 points
+- Language match: +/-5 points  
+- Vector similarity bonus: +0 to +10 points (if >0.7 similarity)
+
+STEP 5: FINAL SCORE CALCULATION
+
+1. Start with Experience Base Score (40-95 range)
+2. Add/subtract Skill Adjustments (-25 to +15)
+3. Add/subtract Role Compatibility (-50 to 0)
+4. Add/subtract Additional Factors (-10 to +20)
+5. Cap final score at 0-100
+
+IMPORTANT: Each job should have a DIFFERENT score. Don't default to 35 or any single value. Be precise and nuanced.
+
+SKILL FILTERING RULES:
+- Only list SPECIFIC, ACTIONABLE technical skills as missing
+- Valid: "React", "Python", "Docker", "Kubernetes", "PostgreSQL", "AWS", "TypeScript"
+- Invalid: "Engineering", "Development", "Problem Solving", "Communication", "Git"
+- Never list soft skills or vague terms
 
 Return JSON with this EXACT structure:
 {
-  "matchScore": 75, // 0-100 (boosted for motivation)
+  "matchScore": 75, // 0-100 (final calculated score, be precise and varied)
   "skillMatch": {
-    "score": 80, // 0-100
+    "score": 80, // 0-100 (skill match percentage)
     "matchingMustHave": ["React", "TypeScript"],
     "missingMustHave": ["Docker"],
     "matchingNiceToHave": ["AWS"],
     "missingNiceToHave": ["Kubernetes"]
   },
-  "experienceMatch": true, // or false
-  "educationMatch": true, // or false
-  "languageMatch": true, // or false
+  "experienceMatch": true, // true if within 1-2 years
+  "educationMatch": true, // true if meets requirement
+  "languageMatch": true, // true if speaks required languages
   "matchExplanation": {
-    "summary": "Strong match (75%). You have most required skills and meet experience requirements.",
-    "strengths": ["strength 1", "strength 2", "strength 3"],
-    "gaps": ["gap 1", "gap 2"],
-    "recommendations": ["recommendation 1", "recommendation 2"],
-    "experienceAnalysis": "You have X years of experience, which meets/close to/exceeds the requirement of Y years.",
-    "skillAnalysis": "You match X% of must-have skills. Missing: [list]. Matching: [list].",
-    "titleMatch": "Role alignment analysis comparing user's current position to job title."
+    "summary": "Good match (75%). Strong technical skills with slightly less experience than preferred.",
+    "strengths": ["Specific strength 1", "Specific strength 2", "Specific strength 3"],
+    "gaps": ["Specific gap 1", "Specific gap 2"],
+    "recommendations": ["Actionable recommendation 1", "Actionable recommendation 2"],
+    "experienceAnalysis": "You have X years vs Y years required. [Specific analysis]",
+    "skillAnalysis": "You match X% of must-have skills. Strong in [areas]. Could improve [areas].",
+    "titleMatch": "Your [current role] aligns [well/moderately/poorly] with [job title]. [Specific reasoning]"
   }
 }
 
@@ -255,14 +260,9 @@ Respond ONLY with valid JSON, no markdown, no code blocks.`,
       },
       {
         role: "user",
-        content: `Analyze the match between this candidate profile and job posting. START BY CHECKING IF ROLES ARE COMPATIBLE:
+        content: `Analyze the match between this candidate and job posting. Provide a PRECISE, DIFFERENTIATED score (avoid clustering around 35%).
 
-
-
-Use CV TEXT to get more information about the candidate.
-${cvText && cvText.trim().length > 0 ? `\nCANDIDATE CV (excerpt):\n${cvText.substring(0, 5000)}\n` : ""}
-
-If no CV TEXT, use CANDIDATE PROFILE:
+${cvText && cvText.trim().length > 0 ? `CANDIDATE CV (excerpt):\n${cvText.substring(0, 5000)}\n\n` : ""}CANDIDATE PROFILE:
 - Current Position: ${userProfile.currentPosition || "Not specified"}
 - Skills: ${userProfile.skills.join(", ") || "None listed"}
 - Experience: ${userProfile.experienceYears ? `${userProfile.experienceYears} years` : "Not specified"}
@@ -278,39 +278,25 @@ JOB REQUIREMENTS:
 - Must-Have Skills: ${jobRequirements.mustHaveSkills.join(", ") || "None specified"}
 - Nice-to-Have Skills: ${jobRequirements.niceToHaveSkills.join(", ") || "None specified"}
 - Experience Required: ${jobRequirements.experienceYears ? `${jobRequirements.experienceYears} years` : "Not specified"}
-
- CRITICAL: Calculate experience gap = (Required Experience) - (Candidate Experience)
-- If gap is 3 years (e.g., 2 YOE candidate for 5 YOE role), score MUST be 30-45% (major penalty)
-- If gap is 1 year (e.g., 2 YOE candidate for 3 YOE role), score can be 55-70% (moderate penalty)
-- Experience gap is MORE important than skill match percentage!
 - Education Required: ${jobRequirements.educationLevel || "Not specified"}
 - Language Requirements: ${jobRequirements.languageRequirements.join(", ") || "None specified"}
 
-SEMANTIC SIMILARITY: ${(vectorSimilarity * 100).toFixed(1)}% (based on CV/job description similarity)
+SEMANTIC SIMILARITY: ${(vectorSimilarity * 100).toFixed(1)}% (CV/job description similarity)
 
 JOB DESCRIPTION (excerpt):
 ${jobRequirements.description}
 
-ANALYSIS INSTRUCTIONS:
-1. FIRST: Check if "${userProfile.currentPosition || "candidate's role"}" is compatible with "${jobRequirements.title}"
-   - Check if job title is a MANAGEMENT/LEADERSHIP role (contains: Manager, Lead, Senior, Director, Head of, Principal, Staff, Architect, Engineering Manager, Tech Lead, Team Lead)
-   - Check if candidate's current position/title indicates management experience (contains: Manager, Lead, Senior, Director, Head, Principal, Staff, Architect, Team Lead, Tech Lead)
-   - If job is MANAGEMENT role but candidate lacks management indicators in their title:
-     * Return matchScore: 20-40 (major penalty)
-     * In titleMatch: Explicitly state "This is a management/leadership role requiring team management and leadership experience. Your current position as [candidate title] does not indicate management experience, which is a significant gap."
-     * In summary: Mention "This role requires management experience which you may not have."
-     * In recommendations: Suggest "Consider gaining leadership/management experience before applying to management roles."
-   - If NOT compatible (e.g., Software Engineer vs Product Owner), return matchScore: 0-30 and explain it's a different career path
-   - If compatible, proceed to step 2
-2. SKILL ANALYSIS - CRITICAL:
-   - Filter out common tools: Git, Vite, npm, yarn, CI/CD
-   - NEVER include vague/generic terms like "Engineering", "Software Development", "Development", "Programming", "Technical Skills", "Engineering Expertise" in missing skills - these are too vague and not actionable
-   - NEVER include soft skills (Problem Solving, Communication, Interpersonal skills, Organizational skills, Attention to detail, Teamwork, Leadership, etc.) in missing skills - these are demonstrated through experience, not CV listings
-   - Only list SPECIFIC, CONCRETE technical skills as missing: specific frameworks (React, Vue, Angular), specific languages (TypeScript, Python, Java, C++), specific platforms (AWS, Azure, GCP), specific databases (PostgreSQL, MongoDB), specific testing frameworks (Jest, Cypress), specific tools (Docker, Kubernetes)
-   - Focus on MAIN technical skills only - skills must be actionable and learnable
-   - Compare what's ACTUALLY in the candidate's CV against job requirements - don't assume gaps based on generic terms
-3. Compare TECHNICAL skills: frameworks, languages, platforms, databases, testing frameworks
-4. Provide comprehensive match analysis with score, detailed breakdown, and actionable insights.`,
+ANALYSIS STEPS:
+1. Check role compatibility: Is "${userProfile.currentPosition || "candidate's role"}" compatible with "${jobRequirements.title}"?
+2. Calculate experience gap: ${userProfile.experienceYears || 0} years vs ${jobRequirements.experienceYears || "unspecified"} required
+3. Calculate skill match: What % of must-have and nice-to-have skills does candidate have?
+4. Determine final score using the scoring formula (be precise, use full 0-100 range)
+
+REMEMBER:
+- Each job should get a UNIQUE score based on its specific fit
+- Don't default to 35% or cluster scores
+- Use the full scoring range: poor (0-30), weak (30-50), moderate (50-70), good (70-85), excellent (85-100)
+- Be nuanced and precise in your assessment`,
       },
     ],
   }) as any;

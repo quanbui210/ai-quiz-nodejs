@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
 import { checkCareerRoadmapLimit } from "../../middleware/limit-check.middleware";
+import { requireCredits } from "../../middleware/credit-check.middleware";
+import { Feature } from "../../services/credit.service";
 import {
   cancelRoadmapGeneration,
   createCareerGoal,
@@ -18,7 +20,7 @@ import {
 const router = Router();
 
 router.post("/validate-target-role", authenticate, validateTargetRole);
-router.post("/goals", authenticate, checkCareerRoadmapLimit, createCareerGoal);
+router.post("/goals", authenticate, requireCredits(Feature.CAREER_ROADMAP), checkCareerRoadmapLimit, createCareerGoal);
 router.get("/goals", authenticate, listCareerGoals);
 router.get("/goals/:goalId", authenticate, getCareerGoal);
 router.delete("/goals/:goalId/generation", authenticate, cancelRoadmapGeneration);
@@ -30,6 +32,7 @@ router.patch(
 router.post(
   "/goals/:goalId/regenerate",
   authenticate,
+  requireCredits(Feature.CAREER_ROADMAP),
   regenerateCareerRoadmap,
 );
 router.get(

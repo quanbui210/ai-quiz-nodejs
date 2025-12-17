@@ -1,5 +1,7 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
+import { requireCredits } from "../../middleware/credit-check.middleware";
+import { Feature } from "../../services/credit.service";
 import {
   cancelSkillMasteryGeneration,
   createSkillMasteryGoal,
@@ -20,14 +22,11 @@ import {
 
 const router = Router();
 
-// Public endpoint - no auth required
 router.get("/available-skills", getAvailableSkills);
 
-// Quiz template endpoints (public - no auth required for templates)
 router.get("/quizzes/templates/:skillName/:phase", getQuizTemplate);
 
-// Goal endpoints
-router.post("/goals", authenticate, createSkillMasteryGoal);
+router.post("/goals", authenticate, requireCredits(Feature.SKILL_MASTERY_ROADMAP), createSkillMasteryGoal);
 router.get("/goals", authenticate, listSkillMasteryGoals);
 router.get("/goals/:goalId", authenticate, getSkillMasteryGoal);
 router.delete("/goals/:goalId/generation", authenticate, cancelSkillMasteryGeneration);

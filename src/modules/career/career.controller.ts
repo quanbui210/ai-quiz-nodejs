@@ -21,6 +21,7 @@ import {
   unregisterJob,
   cancelJob,
 } from "./career-job-manager";
+import { CreditService, Feature } from "../../services/credit.service";
 
 import { generateRoadmapPDF } from "../../utils/pdf-generator";
 import type { JobMarketInsights } from "../market/finnish-jobs.service";
@@ -371,10 +372,21 @@ export const createCareerGoal = async (
   req: AuthenticatedRequest,
   res: Response,
 ) => {
+  let creditTransactionId: string | undefined;
+  
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
     }
+
+    // Deduct credits upfront (middleware already checked availability)
+    const { newBalance, transactionId } = await CreditService.deductCredits(
+      req.user.id,
+      Feature.CAREER_ROADMAP,
+      { action: "create_career_roadmap" }
+    );
+    creditTransactionId = transactionId;
+    console.log(`[Career Goal] Deducted credits. New balance: ${newBalance}. Transaction: ${transactionId}`);
 
     const {
       currentRole,
@@ -721,6 +733,8 @@ export const regenerateCareerRoadmap = async (
   req: AuthenticatedRequest,
   res: Response,
 ) => {
+  let creditTransactionId: string | undefined;
+  
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -742,6 +756,15 @@ export const regenerateCareerRoadmap = async (
     if (!goal) {
       return res.status(404).json({ error: "Career goal not found" });
     }
+
+    // Deduct credits for regeneration (middleware already checked availability)
+    const { newBalance, transactionId } = await CreditService.deductCredits(
+      req.user.id,
+      Feature.CAREER_ROADMAP,
+      { action: "regenerate_career_roadmap", goalId }
+    );
+    creditTransactionId = transactionId;
+    console.log(`[Career Roadmap] Regenerate - Deducted credits. New balance: ${newBalance}. Transaction: ${transactionId}`);
 
     const defaultCountryCode =
       process.env.ADZUNA_DEFAULT_COUNTRY?.trim().toLowerCase() || null;
@@ -848,6 +871,22 @@ export const regenerateCareerRoadmap = async (
     });
   } catch (error: any) {
     console.error("Regenerate career roadmap error:", error);
+    
+    // Refund credits if generation failed
+    if (creditTransactionId && req.user?.id) {
+      try {
+        await CreditService.refundCredits(
+          req.user.id,
+          Feature.CAREER_ROADMAP,
+          "Roadmap regeneration failed",
+          { error: error.message, goalId: req.params.goalId }
+        );
+        console.log(`[Career Roadmap] Refunded credits due to regeneration failure`);
+      } catch (refundError) {
+        console.error("[Career Roadmap] Failed to refund credits:", refundError);
+      }
+    }
+    
     return res.status(500).json({ error: "Failed to regenerate roadmap" });
   }
 };

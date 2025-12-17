@@ -11,6 +11,7 @@ import {
   incrementDocumentCount,
   decrementDocumentCount,
 } from "../../utils/usage";
+import { CreditService, Feature } from "../../services/credit.service";
 import {
   uploadFileToStorage,
   downloadFileFromStorage,
@@ -74,6 +75,27 @@ export const uploadDocument = async (
 
     await fs.unlink(file.path).catch(console.error);
 
+    // Deduct credits upfront
+    let transactionId: string | null = null;
+    try {
+      const creditResult = await CreditService.deductCredits(
+        req.user.id,
+        Feature.DOCUMENT_ANALYSIS,
+        { action: "document_upload" }
+      );
+      transactionId = creditResult.transactionId;
+    } catch (error: any) {
+      try {
+        await deleteFileFromStorage(storagePath);
+      } catch (deleteError) {
+        console.error("Failed to delete file after credit deduction failure:", deleteError);
+      }
+      return res.status(402).json({
+        error: "Insufficient credits",
+        message: error.message || "Not enough credits to upload document",
+      });
+    }
+
     const document = await prisma.document.create({
       data: {
         userId: req.user.id,
@@ -88,7 +110,8 @@ export const uploadDocument = async (
     });
 
     // Process document asynchronously
-    processDocumentAsync(document.id, storagePath, file.mimetype).catch(
+    const userId = req.user.id;
+    processDocumentAsync(document.id, storagePath, file.mimetype, userId).catch(
       (error) => {
         console.error(`Failed to process document ${document.id}:`, error);
         const errorMessage = error?.message || "Failed to process document. Please try uploading again.";
@@ -101,6 +124,16 @@ export const uploadDocument = async (
             },
           })
           .catch(console.error);
+        
+        // Refund credits if processing fails
+        CreditService.refundCredits(
+          userId,
+          Feature.DOCUMENT_ANALYSIS,
+          `Document processing failed: ${errorMessage}`,
+          { documentId: document.id, transactionId }
+        ).catch((refundError) => {
+          console.error("Failed to refund credits for failed document:", refundError);
+        });
       },
     );
 
@@ -122,13 +155,12 @@ export const uploadDocument = async (
   }
 };
 
-/**
- * Process document asynchronously: extract text, chunk, generate embeddings, store
- */
+
 async function processDocumentAsync(
   documentId: string,
   storagePath: string,
   mimeType: string,
+  userId: string,
 ) {
   // Temporary local file path for processing
   const tempFilePath = path.join(

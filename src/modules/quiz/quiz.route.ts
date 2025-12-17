@@ -4,6 +4,8 @@ import {
   checkQuizLimit,
   validateModelFromBody,
 } from "../../middleware/limit-check.middleware";
+import { requireCredits } from "../../middleware/credit-check.middleware";
+import { Feature } from "../../services/credit.service";
 import {
   createQuiz,
   getQuiz,
@@ -226,6 +228,7 @@ router.post("/validate-topic", authenticate, validateQuizTopic);
 router.post(
   "/create",
   authenticate,
+  requireCredits(Feature.QUIZ_GENERATION),
   checkQuizLimit,
   validateModelFromBody,
   createQuiz,

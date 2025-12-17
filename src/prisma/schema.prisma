@@ -46,6 +46,7 @@ model User {
   jobMatches        UserJobMatch[]
   skillMasteryGoals SkillMasteryGoal[]
   skillMasteryQuizzes SkillMasteryQuiz[]
+  creditTransactions CreditTransaction[]
 }
 
 model Topic {
@@ -235,13 +236,20 @@ model UserSubscription {
   stripeCustomerId     String? @unique
   stripeSubscriptionId String? @unique
 
-  // Current effective limits (can be overridden by admin)
   maxTopics                  Int      @default(5)
   maxQuizzes                 Int      @default(10)
   maxDocuments               Int      @default(0)
   maxCareerRoadmaps          Int      @default(1)
   maxInterviewSessionsPerMonth Int    @default(3)
   maxResumes                 Int      @default(2)
+  
+  // NEW: Credit-based system
+  creditsPerMonth            Int      @default(50)     // Monthly credit allocation
+  currentCredits             Int      @default(50)     // Current available credits
+  totalCreditsUsed           Int      @default(0)      // Lifetime credits used
+  creditsUsedThisMonth       Int      @default(0)      // Credits used this billing period
+  maxRolloverCredits         Int      @default(0)      // Max credits that can rollover (0 for free tier)
+  
   allowedModels              String[]
 
   // Subscription status
@@ -278,6 +286,36 @@ model UserUsage {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+model CreditTransaction {
+  id          String   @id @default(uuid())
+  userId      String
+  amount      Int      // Positive for additions, negative for deductions
+  balance     Int      // Balance after transaction
+  type        CreditTransactionType
+  description String?
+  metadata    Json?    // Store feature details (e.g., { feature: "career_roadmap", roadmapId: "..." })
+  
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([type])
+}
+
+model CreditPricing {
+  id          String   @id @default(uuid())
+  feature     String   @unique // "quiz_generation", "career_roadmap", "job_matching", etc.
+  creditCost  Int      // Cost in credits
+  description String?
+  isActive    Boolean  @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([feature, isActive])
 }
 
 model AdminUser {
@@ -407,6 +445,16 @@ enum SubscriptionStatus {
   PAST_DUE
   UNPAID
   TRIALING
+}
+
+enum CreditTransactionType {
+  MONTHLY_ALLOCATION   // Monthly credit refresh
+  PURCHASE             // User purchased credits
+  USAGE                // Used credits for a feature
+  REFUND               // Refunded credits (e.g., failed generation)
+  ADMIN_ADJUSTMENT     // Admin manually adjusted credits
+  ROLLOVER             // Credits rolled over from previous month
+  BONUS                // Promotional bonus credits
 }
 
 enum AdminRole {

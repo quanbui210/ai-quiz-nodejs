@@ -14,6 +14,8 @@ import {
 import { getDocumentChatSessions } from "./document-chat.controller";
 import { authenticate } from "../../middleware/auth.middleware";
 import { checkDocumentLimit } from "../../middleware/limit-check.middleware";
+import { requireCredits } from "../../middleware/credit-check.middleware";
+import { Feature } from "../../services/credit.service";
 
 const router = Router();
 
@@ -67,6 +69,7 @@ const upload = multer({
 router.post(
   "/upload",
   authenticate,
+  requireCredits(Feature.DOCUMENT_ANALYSIS),
   checkDocumentLimit,
   upload.single("file"),
   uploadDocument,
