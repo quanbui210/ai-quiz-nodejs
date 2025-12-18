@@ -249,13 +249,15 @@ model UserSubscription {
   totalCreditsUsed           Int      @default(0)      // Lifetime credits used
   creditsUsedThisMonth       Int      @default(0)      // Credits used this billing period
   maxRolloverCredits         Int      @default(0)      // Max credits that can rollover (0 for free tier)
+  creditPeriodStart          DateTime? // Credit reset period start (monthly, independent of subscription billing)
+  creditPeriodEnd            DateTime? // Credit reset period end (monthly, independent of subscription billing)
   
   allowedModels              String[]
 
-  // Subscription status
+  // Subscription status (from Stripe - can be monthly or annual)
   status             SubscriptionStatus @default(ACTIVE)
-  currentPeriodStart DateTime?
-  currentPeriodEnd   DateTime?
+  currentPeriodStart DateTime? // Subscription billing period start (from Stripe)
+  currentPeriodEnd   DateTime? // Subscription billing period end (from Stripe, can be 1 year for annual)
   cancelAtPeriodEnd  Boolean            @default(false)
 
   createdAt DateTime @default(now())

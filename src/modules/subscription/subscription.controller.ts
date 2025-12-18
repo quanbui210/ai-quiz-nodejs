@@ -336,13 +336,13 @@ export const getMySubscription = async (
         subscription.creditsPerMonth > 0
           ? (subscription.creditsUsedThisMonth / subscription.creditsPerMonth) * 100
           : 0,
-      daysUntilReset: subscription.currentPeriodEnd
+      daysUntilReset: subscription.creditPeriodEnd
         ? Math.ceil(
-            (subscription.currentPeriodEnd.getTime() - Date.now()) /
+            (subscription.creditPeriodEnd.getTime() - Date.now()) /
               (1000 * 60 * 60 * 24)
           )
         : null,
-      resetDate: subscription.currentPeriodEnd,
+      resetDate: subscription.creditPeriodEnd, // Credit reset date (monthly), not subscription billing date
     };
 
     return res.json({
@@ -612,7 +612,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const currentPeriodEnd =
     periodEnd && typeof periodEnd === "number"
       ? new Date(periodEnd * 1000)
-      : new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); 
+      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // Default to 30 days if Stripe doesn't provide 
 
   if (
     isNaN(currentPeriodStart.getTime()) ||
@@ -646,6 +646,10 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     }
   }
 
+  // Initialize credit reset period (monthly, independent of subscription billing)
+  const now = new Date();
+  const creditPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days for credit reset
+
   const updatedSubscription = await prisma.userSubscription.upsert({
     where: { userId },
     create: {
@@ -661,8 +665,12 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       maxResumes: 2,
       allowedModels: [],
       status: "ACTIVE",
+      // Subscription billing period (from Stripe, can be 1 year for annual)
       currentPeriodStart,
       currentPeriodEnd,
+      // Credit reset period (monthly, independent of subscription billing)
+      creditPeriodStart: now,
+      creditPeriodEnd: creditPeriodEnd,
       // Credit fields
       creditsPerMonth: creditAllocation.creditsPerMonth,
       currentCredits: creditAllocation.creditsPerMonth, // Give full credits on subscription
@@ -675,9 +683,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       stripeCustomerId: session.customer as string,
       stripeSubscriptionId: subscription.id,
       status: "ACTIVE",
+      // Update subscription billing period (from Stripe)
       currentPeriodStart,
       currentPeriodEnd,
       cancelAtPeriodEnd: false,
+      // Initialize credit reset period if not set
+      creditPeriodStart: now,
+      creditPeriodEnd: creditPeriodEnd,
       // Update credit fields on plan change
       creditsPerMonth: creditAllocation.creditsPerMonth,
       maxRolloverCredits: creditAllocation.maxRolloverCredits,
@@ -782,7 +794,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
     periodEnd && typeof periodEnd === "number"
       ? new Date(periodEnd * 1000)
       : userSubscription.currentPeriodEnd ||
-        new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); 
 
   const cancelAt = (latestSubscription as any).cancel_at;
   const cancelAtPeriodEndFlag = (latestSubscription as any)
@@ -793,7 +805,7 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   if (cancelAt) {
     const cancelAtDate = new Date(cancelAt * 1000);
     const now = new Date();
-    cancelAtPeriodEnd = cancelAtDate > now; // True if cancellation is scheduled for the future
+    cancelAtPeriodEnd = cancelAtDate > now; 
   } else if (
     cancelAtPeriodEndFlag !== undefined &&
     cancelAtPeriodEndFlag !== null

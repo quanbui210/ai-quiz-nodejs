@@ -229,15 +229,18 @@ export class CreditService {
       const newBalance =
         subscription.creditsPerMonth + rolloverAmount;
 
+      // Update credit reset period (monthly, independent of subscription billing)
+      const now = new Date();
+      const creditPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 days
+
       await tx.userSubscription.update({
         where: { userId },
         data: {
           currentCredits: newBalance,
           creditsUsedThisMonth: 0,
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(
-            Date.now() + 30 * 24 * 60 * 60 * 1000
-          ), // +30 days
+          creditPeriodStart: now, // Credit reset period start
+          creditPeriodEnd: creditPeriodEnd, // Credit reset period end (monthly)
+          // Note: currentPeriodStart/End are for subscription billing (from Stripe, can be 1 year)
         },
       });
 

@@ -441,8 +441,10 @@ export const getCurrentUser = async (
         creditsUsedThisMonth: true,
         totalCreditsUsed: true,
         maxRolloverCredits: true,
-        currentPeriodStart: true,
-        currentPeriodEnd: true,
+        creditPeriodStart: true, // Credit reset period (monthly)
+        creditPeriodEnd: true, // Credit reset period (monthly)
+        currentPeriodStart: true, // Subscription billing period (from Stripe)
+        currentPeriodEnd: true, // Subscription billing period (from Stripe, can be 1 year)
         plan: {
           select: {
             id: true,
@@ -453,6 +455,7 @@ export const getCurrentUser = async (
     });
 
     // Calculate computed fields for frontend
+    // Use creditPeriodEnd for credit reset (monthly), NOT currentPeriodEnd (subscription billing)
     const credits = subscription
       ? {
           creditsPerMonth: subscription.creditsPerMonth,
@@ -464,13 +467,13 @@ export const getCurrentUser = async (
             subscription.creditsPerMonth > 0
               ? (subscription.creditsUsedThisMonth / subscription.creditsPerMonth) * 100
               : 0,
-          daysUntilReset: subscription.currentPeriodEnd
+          daysUntilReset: subscription.creditPeriodEnd
             ? Math.ceil(
-                (subscription.currentPeriodEnd.getTime() - Date.now()) /
+                (subscription.creditPeriodEnd.getTime() - Date.now()) /
                   (1000 * 60 * 60 * 24)
               )
             : null,
-          resetDate: subscription.currentPeriodEnd,
+          resetDate: subscription.creditPeriodEnd, // Credit reset date (monthly)
         }
       : null;
 

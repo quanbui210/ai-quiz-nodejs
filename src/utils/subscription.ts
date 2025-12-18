@@ -93,6 +93,9 @@ export const getOrCreateDefaultSubscription = async (userId: string) => {
   }
   const { creditsPerMonth, maxRolloverCredits } = creditAllocation;
 
+  const now = new Date();
+  const creditPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // 30 days for credit reset
+
   const subscription = await prisma.userSubscription.create({
     data: {
       userId,
@@ -110,8 +113,12 @@ export const getOrCreateDefaultSubscription = async (userId: string) => {
       maxRolloverCredits,
       creditsUsedThisMonth: 0,
       totalCreditsUsed: 0,
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+      // Credit reset period (monthly, independent of subscription billing)
+      creditPeriodStart: now,
+      creditPeriodEnd: creditPeriodEnd,
+      // Subscription billing period (can be set later from Stripe)
+      currentPeriodStart: now,
+      currentPeriodEnd: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), // Default 30 days, will be updated from Stripe
     },
     include: { plan: true },
   });
