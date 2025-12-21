@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../../utils/prisma";
 import { AttemptStatus, Difficulty, DocumentStatus } from "@prisma/client";
+import { CreditService } from "../../services/credit.service";
 
 export const getQuizResult = async (
   req: Request & { user?: any },
@@ -819,7 +820,6 @@ export const getUserStats = async (
     });
 
     
-    // 4. RESUME ANALYTICS
     
     const [
       totalResumes,
@@ -870,7 +870,7 @@ export const getUserStats = async (
     });
 
     
-    // 5. DOCUMENT ANALYTICS
+  
     
     const [
       totalDocuments,
@@ -908,7 +908,211 @@ export const getUserStats = async (
     ]);
 
     
-    // 6. OVERALL SUMMARY
+
+    
+    const [totalSkillMasteryGoals, activeSkillMasteryGoals, completedSkillMasteryGoals] = await Promise.all([
+      prisma.skillMasteryGoal.count({ where: { userId } }),
+      prisma.skillMasteryGoal.count({ where: { userId, status: "ACTIVE" } }),
+      prisma.skillMasteryGoal.count({ where: { userId, status: "COMPLETED" } }),
+    ]);
+
+    const skillMasteryGoalsWithProgress = await prisma.skillMasteryGoal.findMany({
+      where: { userId },
+      select: { progress: true },
+    });
+
+    const averageSkillMasteryProgress =
+      skillMasteryGoalsWithProgress.length > 0
+        ? Math.round(
+            (skillMasteryGoalsWithProgress.reduce(
+              (sum, goal) => sum + goal.progress,
+              0,
+            ) /
+              skillMasteryGoalsWithProgress.length) *
+              100,
+          ) / 100
+        : 0;
+
+
+    
+    let creditAnalytics;
+    try {
+      creditAnalytics = await CreditService.getUsageAnalytics(userId);
+      
+      const subscription = await prisma.userSubscription.findUnique({
+        where: { userId },
+        select: {
+          creditPeriodEnd: true,
+          creditPeriodStart: true,
+        },
+      });
+
+      const now = new Date();
+      const daysUntilReset = subscription?.creditPeriodEnd
+        ? Math.ceil(
+            (subscription.creditPeriodEnd.getTime() - now.getTime()) /
+              (1000 * 60 * 60 * 24),
+          )
+        : null;
+
+      const creditUsageTrend = await prisma.creditTransaction.findMany({
+        where: {
+          userId,
+          type: "USAGE",
+          createdAt: {
+            gte: subscription?.creditPeriodStart || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+          },
+        },
+        select: {
+          amount: true,
+          createdAt: true,
+          metadata: true,
+        },
+        orderBy: { createdAt: "asc" },
+      });
+
+      const dailyCreditUsage: { [key: string]: number } = {};
+      creditUsageTrend.forEach((tx) => {
+        const dateKey = tx.createdAt.toISOString().split("T")[0];
+        if (dateKey) {
+          if (!dailyCreditUsage[dateKey]) {
+            dailyCreditUsage[dateKey] = 0;
+          }
+          dailyCreditUsage[dateKey] += Math.abs(tx.amount);
+        }
+      });
+
+      const creditTrend = Object.entries(dailyCreditUsage).map(([date, credits]) => ({
+        date,
+        credits,
+      }));
+
+      creditAnalytics = {
+        ...creditAnalytics,
+        daysUntilReset,
+        usageTrend: creditTrend,
+      };
+    } catch (error) {
+      console.error("Error fetching credit analytics:", error);
+      creditAnalytics = null;
+    }
+
+    // 8. INTERVIEW PERFORMANCE TREND
+    
+    const interviewSessionsForTrend = await prisma.interviewSession.findMany({
+      where: {
+        userId,
+        status: "COMPLETED",
+        overallScore: { not: null },
+        completedAt: { not: null },
+      },
+      select: {
+        overallScore: true,
+        completedAt: true,
+      },
+      orderBy: { completedAt: "asc" },
+    });
+
+    const interviewScoreTrend = interviewSessionsForTrend.map((session) => ({
+      date: session.completedAt!.toISOString().split("T")[0],
+      score: Math.round((session.overallScore || 0) * 100) / 100,
+    }));
+
+    // 9. LEARNING ACTIVITY HEATMAP
+    
+    const getActivityHeatmap = async (days: number) => {
+      const now = new Date();
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+
+      const activities: Array<{ date: Date; type: string }> = [];
+
+      const quizAttempts = await prisma.quizAttempt.findMany({
+        where: {
+          userId,
+          completedAt: { gte: startDate, not: null },
+          status: AttemptStatus.COMPLETED,
+        },
+        select: { completedAt: true },
+      });
+      quizAttempts.forEach((attempt) => {
+        if (attempt.completedAt) activities.push({ date: attempt.completedAt, type: "quiz" });
+      });
+
+      const interviewSessions = await prisma.interviewSession.findMany({
+        where: {
+          userId,
+          createdAt: { gte: startDate },
+        },
+        select: { createdAt: true },
+      });
+      interviewSessions.forEach((session) => {
+        activities.push({ date: session.createdAt, type: "interview" });
+      });
+
+      const roadmapTasks = await prisma.careerTask.findMany({
+        where: {
+          goal: { userId },
+          completedAt: { gte: startDate, not: null },
+          status: "COMPLETED",
+        },
+        select: { completedAt: true },
+      });
+      roadmapTasks.forEach((task) => {
+        if (task.completedAt) activities.push({ date: task.completedAt, type: "roadmap" });
+      });
+
+      const skillMasteryTasks = await prisma.skillMasteryTask.findMany({
+        where: {
+          goal: { userId },
+          completedAt: { gte: startDate, not: null },
+          status: "COMPLETED",
+        },
+        select: { completedAt: true },
+      });
+      skillMasteryTasks.forEach((task) => {
+        if (task.completedAt) activities.push({ date: task.completedAt, type: "skill_mastery" });
+      });
+
+      const dailyActivity: { [key: string]: number } = {};
+      activities.forEach((activity) => {
+        const dateKey = activity.date.toISOString().split("T")[0];
+        if (dateKey) {
+          if (!dailyActivity[dateKey]) {
+            dailyActivity[dateKey] = 0;
+          }
+          dailyActivity[dateKey] += 1;
+        }
+      });
+
+      return Object.entries(dailyActivity).map(([date, count]) => ({
+        date,
+        count,
+      }));
+    };
+
+    const [activityHeatmap30, activityHeatmap90] = await Promise.all([
+      getActivityHeatmap(30),
+      getActivityHeatmap(90),
+    ]);
+
+    const activityByFeature = {
+      career_roadmap: roadmapTasksThisWeek,
+      interview_session: interviewSessionsThisWeek,
+      quiz: thisWeekAttempts,
+      skill_mastery: await prisma.skillMasteryTask.count({
+        where: {
+          goal: { userId },
+          completedAt: { gte: startOfWeek, not: null },
+          status: "COMPLETED",
+        },
+      }),
+      resume: resumesThisWeek,
+      document: documentsThisWeek,
+    };
+
+    // 10. OVERALL SUMMARY
     
     const overallLearningActivity =
       thisWeekAttempts +
@@ -924,6 +1128,14 @@ export const getUserStats = async (
       resumesLastWeek +
       documentsLastWeek;
 
+    const overallPerformanceScore = Math.round(
+      (averageRoadmapProgress * 0.3 +
+        (interviewScoreStats._avg.overallScore || 0) * 0.3 +
+        averageSkillMasteryProgress * 0.2 +
+        (resumeScoreStats._avg.analysisScore || 0) * 0.2) /
+        1.0,
+    );
+
     return res.json({
       analytics: {
         // Overall Summary
@@ -931,73 +1143,50 @@ export const getUserStats = async (
           overallProgress: Math.round(
             (overallProgress + averageRoadmapProgress) / 2,
           ),
+          overallPerformanceScore,
           overallLearningActivity: {
             thisWeek: overallLearningActivity,
             lastWeek: lastWeekLearningActivity,
             change: overallLearningActivity - lastWeekLearningActivity,
+            streakDays: await (async () => {
+              const activities = await prisma.quizAttempt.findMany({
+                where: {
+                  userId,
+                  completedAt: { not: null },
+                  status: AttemptStatus.COMPLETED,
+                },
+                select: { completedAt: true },
+                orderBy: { completedAt: "desc" },
+                take: 30,
+              });
+              if (activities.length === 0) return 0;
+              let streak = 0;
+              const today = new Date();
+              today.setHours(0, 0, 0, 0);
+              for (let i = 0; i < activities.length; i++) {
+                const activity = activities[i];
+                if (!activity || !activity.completedAt) continue;
+                const activityDate = new Date(activity.completedAt);
+                activityDate.setHours(0, 0, 0, 0);
+                const daysDiff = Math.floor(
+                  (today.getTime() - activityDate.getTime()) / (1000 * 60 * 60 * 24),
+                );
+                if (daysDiff === i) {
+                  streak++;
+                } else {
+                  break;
+                }
+              }
+              return streak;
+            })(),
           },
         },
 
-        // Feature Breakdown
         quizzes: {
           totalQuizzes,
           totalAttempts,
           totalTopics,
-          totalQuestions,
           averageScore: overallProgress,
-          bestScore: bestScore
-            ? {
-                score: bestScore.score,
-                quizId: bestScore.quiz.id,
-                quizTitle: bestScore.quiz.title,
-                completedAt: bestScore.completedAt,
-              }
-            : null,
-          worstScore: worstScore
-            ? {
-                score: worstScore.score,
-                quizId: worstScore.quiz.id,
-                quizTitle: worstScore.quiz.title,
-                completedAt: worstScore.completedAt,
-              }
-            : null,
-          weeklyComparison: {
-            attempts: {
-              thisWeek: thisWeekAttempts,
-              lastWeek: lastWeekAttempts,
-              change: thisWeekAttempts - lastWeekAttempts,
-            },
-            topics: {
-              thisWeek: thisWeekTopics,
-              lastWeek: lastWeekTopics,
-              change: thisWeekTopics - lastWeekTopics,
-            },
-            progress: {
-              thisWeek: thisWeekProgress,
-              lastWeek: lastWeekProgress,
-              change: progressChange,
-            },
-          },
-          time: {
-            totalTimeSpent: totalTimeSpent._sum.timeSpent || 0,
-            averageTimeSpent:
-              Math.round((averageTimeSpent._avg.timeSpent || 0) * 100) / 100,
-            totalTimeSet: totalTimeSet._sum.timer || 0,
-            averageTimeSet:
-              Math.round((averageTimeSet._avg.timer || 0) * 100) / 100,
-            timeEfficiency: timeEfficiency
-              ? Math.round(timeEfficiency * 100) / 100
-              : null,
-          },
-          performance: {
-            timeSeries: {
-              last7Days: performance7Days,
-              last30Days: performance30Days,
-              last90Days: performance90Days,
-            },
-          },
-          topics: topicsProgress,
-          attemptsByQuiz: attemptsWithDetails,
         },
 
         interviewPrep: {
@@ -1013,6 +1202,7 @@ export const getUserStats = async (
             level: item.level,
             count: item._count.id,
           })),
+          scoreTrend: interviewScoreTrend,
           weeklyComparison: {
             thisWeek: interviewSessionsThisWeek,
             lastWeek: interviewSessionsLastWeek,
@@ -1066,6 +1256,23 @@ export const getUserStats = async (
             lastWeek: documentsLastWeek,
             change: documentsThisWeek - documentsLastWeek,
           },
+        },
+
+        skillMastery: {
+          totalGoals: totalSkillMasteryGoals,
+          activeGoals: activeSkillMasteryGoals,
+          completedGoals: completedSkillMasteryGoals,
+          averageProgress: averageSkillMasteryProgress,
+        },
+
+        credits: creditAnalytics,
+
+        learningActivity: {
+          heatmap: {
+            last30Days: activityHeatmap30,
+            last90Days: activityHeatmap90,
+          },
+          byFeature: activityByFeature,
         },
 
         // Recent Activity (all features combined)

@@ -26,7 +26,7 @@ const safeJsonParse = <T>(value?: string | null): T | null => {
 export interface GenerateQuestionInput {
   role: string;
   roleDescription?: string | null;
-  requiredSkills?: string[]; // Required skills for the position (alternative to roleDescription)
+  requiredSkills?: string[]; 
   level: InterviewLevel;
   yearsOfExperience?: number | null;
   country?: string | null;
@@ -114,7 +114,7 @@ IMPORTANT:
   const completion = await openai.chat.completions.create({
     model: DEFAULT_INTERVIEW_MODEL,
     temperature: 0.6,
-    max_tokens: 1000, // Increased to accommodate example answers
+    max_tokens: 1000, 
     response_format: { type: "json_object" },
     messages,
   });

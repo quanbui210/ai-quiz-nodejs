@@ -10,12 +10,11 @@ export async function refreshAllMonthlyCredits(): Promise<void> {
 
   try {
     const now = new Date();
-    // Check creditPeriodEnd (monthly credit reset), NOT currentPeriodEnd (subscription billing)
     const subscriptions = await prisma.userSubscription.findMany({
       where: {
         status: "ACTIVE",
         creditPeriodEnd: {
-          lte: now, // Credit reset period has ended
+          lte: now, 
         },
       },
       select: {

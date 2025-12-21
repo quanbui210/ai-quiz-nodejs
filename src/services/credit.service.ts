@@ -21,9 +21,7 @@ export const DEFAULT_CREDIT_COSTS: Record<Feature, number> = {
 };
 
 export class CreditService {
-  /**
-   * Get user's current credit balance
-   */
+
   static async getBalance(userId: string): Promise<number> {
     const subscription = await prisma.userSubscription.findUnique({
       where: { userId },
@@ -33,9 +31,7 @@ export class CreditService {
     return subscription?.currentCredits ?? 0;
   }
 
-  /**
-   * Get credit cost for a feature
-   */
+
   static async getCreditCost(feature: Feature): Promise<number> {
     const pricing = await prisma.creditPricing.findUnique({
       where: { feature, isActive: true },
@@ -44,9 +40,7 @@ export class CreditService {
     return pricing?.creditCost ?? DEFAULT_CREDIT_COSTS[feature];
   }
 
-  /**
-   * Check if user has enough credits
-   */
+
   static async hasEnoughCredits(
     userId: string,
     feature: Feature
@@ -63,9 +57,7 @@ export class CreditService {
     };
   }
 
-  /**
-   * Deduct credits for a feature usage
-   */
+
   static async deductCredits(
     userId: string,
     feature: Feature,
@@ -73,9 +65,7 @@ export class CreditService {
   ): Promise<{ success: boolean; newBalance: number; transactionId: string }> {
     const cost = await this.getCreditCost(feature);
 
-    // Use transaction to ensure atomicity
     const result = await prisma.$transaction(async (tx) => {
-      // Get current subscription
       const subscription = await tx.userSubscription.findUnique({
         where: { userId },
       });
@@ -90,7 +80,6 @@ export class CreditService {
         );
       }
 
-      // Deduct credits
       const updated = await tx.userSubscription.update({
         where: { userId },
         data: {
@@ -100,7 +89,6 @@ export class CreditService {
         },
       });
 
-      // Log transaction
       const transaction = await tx.creditTransaction.create({
         data: {
           userId,
@@ -125,9 +113,7 @@ export class CreditService {
     return result;
   }
 
-  /**
-   * Refund credits (e.g., if generation failed)
-   */
+
   static async refundCredits(
     userId: string,
     feature: Feature,
@@ -169,9 +155,6 @@ export class CreditService {
     return result;
   }
 
-  /**
-   * Add credits (purchase, bonus, admin adjustment)
-   */
   static async addCredits(
     userId: string,
     amount: number,
@@ -207,9 +190,6 @@ export class CreditService {
     return result;
   }
 
-  /**
-   * Monthly credit refresh (called by cron job)
-   */
   static async refreshMonthlyCredits(userId: string): Promise<void> {
     await prisma.$transaction(async (tx) => {
       const subscription = await tx.userSubscription.findUnique({
@@ -218,18 +198,15 @@ export class CreditService {
 
       if (!subscription) return;
 
-      // Calculate rollover credits
       const unusedCredits = subscription.currentCredits;
       const rolloverAmount = Math.min(
         unusedCredits,
         subscription.maxRolloverCredits
       );
 
-      // Reset monthly usage and add new credits + rollover
       const newBalance =
         subscription.creditsPerMonth + rolloverAmount;
 
-      // Update credit reset period (monthly, independent of subscription billing)
       const now = new Date();
       const creditPeriodEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 days
 
@@ -238,9 +215,8 @@ export class CreditService {
         data: {
           currentCredits: newBalance,
           creditsUsedThisMonth: 0,
-          creditPeriodStart: now, // Credit reset period start
-          creditPeriodEnd: creditPeriodEnd, // Credit reset period end (monthly)
-          // Note: currentPeriodStart/End are for subscription billing (from Stripe, can be 1 year)
+          creditPeriodStart: now, 
+          creditPeriodEnd: creditPeriodEnd, 
         },
       });
 
@@ -273,9 +249,7 @@ export class CreditService {
     });
   }
 
-  /**
-   * Get credit transaction history
-   */
+
   static async getTransactionHistory(
     userId: string,
     limit: number = 50
@@ -303,7 +277,6 @@ export class CreditService {
       throw new Error("Subscription not found");
     }
 
-    // Get usage by feature
     const transactions = await prisma.creditTransaction.findMany({
       where: {
         userId,

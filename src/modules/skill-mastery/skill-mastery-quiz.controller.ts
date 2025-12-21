@@ -162,7 +162,6 @@ export const createUserQuiz = async (
       });
     }
 
-    // Check if user already has a quiz for this phase
     const existingQuiz = await prisma.skillMasteryQuiz.findFirst({
       where: {
         goalId,
@@ -172,7 +171,6 @@ export const createUserQuiz = async (
     });
 
     if (existingQuiz) {
-      // Return existing quiz
       const quiz = await prisma.skillMasteryQuiz.findUnique({
         where: { id: existingQuiz.id },
         include: {
@@ -215,7 +213,6 @@ export const createUserQuiz = async (
       });
     }
 
-    // Create new quiz instance
     const quiz = await prisma.skillMasteryQuiz.create({
       data: {
         userId: req.user.id,

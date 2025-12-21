@@ -432,7 +432,6 @@ export const getCurrentUser = async (
       },
     });
 
-    // Get subscription with credit data
     const subscription = await prisma.userSubscription.findUnique({
       where: { userId: req.user.id },
       select: {
@@ -441,10 +440,10 @@ export const getCurrentUser = async (
         creditsUsedThisMonth: true,
         totalCreditsUsed: true,
         maxRolloverCredits: true,
-        creditPeriodStart: true, // Credit reset period (monthly)
-        creditPeriodEnd: true, // Credit reset period (monthly)
-        currentPeriodStart: true, // Subscription billing period (from Stripe)
-        currentPeriodEnd: true, // Subscription billing period (from Stripe, can be 1 year)
+        creditPeriodStart: true,
+        creditPeriodEnd: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
         plan: {
           select: {
             id: true,
@@ -454,8 +453,7 @@ export const getCurrentUser = async (
       },
     });
 
-    // Calculate computed fields for frontend
-    // Use creditPeriodEnd for credit reset (monthly), NOT currentPeriodEnd (subscription billing)
+   
     const credits = subscription
       ? {
           creditsPerMonth: subscription.creditsPerMonth,

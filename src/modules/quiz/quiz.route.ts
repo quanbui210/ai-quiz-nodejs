@@ -17,6 +17,7 @@ import {
   deleteQuiz,
   pauseQuiz,
   resumeQuiz,
+  getQuizAnalytics,
 } from "./quiz.controller";
 
 const router = Router();
@@ -599,5 +600,7 @@ router.post("/:quizId/pause", authenticate, pauseQuiz);
  *         description: Server error
  */
 router.get("/:quizId/resume", authenticate, resumeQuiz);
+
+router.get("/analytics", authenticate, getQuizAnalytics);
 
 export default router;
