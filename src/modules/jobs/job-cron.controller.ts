@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { AuthenticatedRequest } from "../../middleware/admin.middleware";
-import { runJobScrapingCronJob, runJobProcessingCronJob } from "./job-cron.service";
+import { runJobProcessingCronJob, scrapeJobsOnly } from "./job-cron.service";
 
 let isScrapingInProgress = false;
 
@@ -18,9 +18,9 @@ export const triggerJobScraping = async (
     }
 
     isScrapingInProgress = true;
-    console.log("[Job Cron Controller] Triggering job scraping cron job (background)...");
+    console.log("[Job Cron Controller] Triggering job scraping only (no processing, background)...");
     
-    runJobScrapingCronJob()
+    scrapeJobsOnly()
       .then(() => {
         console.log("[Job Cron Controller] Background scraping job completed");
       })
@@ -34,9 +34,9 @@ export const triggerJobScraping = async (
     
     return res.json({
       success: true,
-      message: "Job scraping started in background. This may take 15-30 minutes to complete.",
+      message: "Job scraping started in background (fetch only, no AI processing). This may take 30-60 seconds to complete.",
       status: "running",
-      note: "The job will scrape 14 roles × 5 locations (70 combinations). Check server logs for progress.",
+      note: "Jobs will be fetched and stored, but not analyzed. Use the 'Process Jobs' button to analyze them later.",
     });
   } catch (error: any) {
     console.error("[Job Cron Controller] Error:", error);

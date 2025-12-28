@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { triggerJobScraping, triggerJobProcessing } from "./job-cron.controller";
+import { triggerJobScraping, triggerJobProcessing, triggerJobScrapingOnly } from "./job-cron.controller";
 import { authenticate } from "../../middleware/auth.middleware";
 import { requireAdmin } from "../../middleware/admin.middleware";
 

@@ -3,6 +3,40 @@ import { processUnprocessedJobs } from "./job-processor.service";
 import { storeMarketTrends } from "./job-trends.service";
 import { POPULAR_TECH_ROLES, POPULAR_LOCATIONS } from "./job-scraper.service";
 
+/**
+ * Scrape jobs only (no AI processing or analysis)
+ * Used by admin dashboard to refresh job data without triggering expensive AI operations
+ */
+export async function scrapeJobsOnly(): Promise<void> {
+  console.log("[Job Cron] Starting job scraping (fetch only, no processing)...");
+  const startTime = Date.now();
+
+  try {
+    const topRole = POPULAR_TECH_ROLES[0] || "Software Engineer"; 
+    const topLocation = POPULAR_LOCATIONS[0] || "Helsinki";
+    const jobScrapeNumber = parseInt(process.env.JOB_SCRAPE_NUMBER || "30", 10);
+    console.log(`[Job Cron] Scraping "${topRole}" in "${topLocation}" (1 combination, ~${jobScrapeNumber} jobs, ~30 seconds)`);
+    
+    const scrapeResult = await scrapePopularJobs(
+      [topRole ?? ""], 
+      [topLocation], 
+      14, 
+    );
+
+    console.log(
+      `[Job Cron] Scraped ${scrapeResult.totalStored} new jobs, skipped ${scrapeResult.totalSkipped} duplicates/old`,
+    );
+
+    const duration = ((Date.now() - startTime) / 1000).toFixed(0);
+    console.log(
+      `[Job Cron] Job scraping completed in ${duration}s: ${scrapeResult.totalStored} scraped (no processing)`,
+    );
+  } catch (error) {
+    console.error("[Job Cron] Job scraping failed:", error);
+    throw error;
+  }
+}
+
 export async function runJobScrapingCronJob(): Promise<void> {
   console.log("[Job Cron] Starting bi-monthly job scraping cron job...");
   const startTime = Date.now();

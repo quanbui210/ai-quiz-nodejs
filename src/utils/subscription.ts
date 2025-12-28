@@ -267,14 +267,12 @@ export const updateSubscriptionFromPlan = async (
       // Update credit fields
       creditsPerMonth: creditAllocation.creditsPerMonth,
       maxRolloverCredits: creditAllocation.maxRolloverCredits,
-      // Update currentCredits: preserve if already set correctly, otherwise set to new amount
       currentCredits: (() => {
         const oldCreditsPerMonth = existingSubscription?.creditsPerMonth || 0;
         const newCreditsPerMonth = creditAllocation.creditsPerMonth;
         const oldCurrentCredits = existingSubscription?.currentCredits || 0;
         
-        // If creditsPerMonth matches currentCredits, it means credits were just set correctly
-        // Preserve them if they match the new creditsPerMonth
+       
         if (oldCurrentCredits === newCreditsPerMonth) {
           return oldCurrentCredits;
         }
