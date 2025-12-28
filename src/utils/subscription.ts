@@ -267,10 +267,27 @@ export const updateSubscriptionFromPlan = async (
       // Update credit fields
       creditsPerMonth: creditAllocation.creditsPerMonth,
       maxRolloverCredits: creditAllocation.maxRolloverCredits,
-      // Only update currentCredits if it's 0 or null (preserve existing credits)
-      currentCredits: existingSubscription?.currentCredits && existingSubscription.currentCredits > 0
-        ? existingSubscription.currentCredits
-        : creditAllocation.creditsPerMonth,
+      // Update currentCredits: preserve if already set correctly, otherwise set to new amount
+      currentCredits: (() => {
+        const oldCreditsPerMonth = existingSubscription?.creditsPerMonth || 0;
+        const newCreditsPerMonth = creditAllocation.creditsPerMonth;
+        const oldCurrentCredits = existingSubscription?.currentCredits || 0;
+        
+        // If creditsPerMonth matches currentCredits, it means credits were just set correctly
+        // Preserve them if they match the new creditsPerMonth
+        if (oldCurrentCredits === newCreditsPerMonth) {
+          return oldCurrentCredits;
+        }
+        
+        // If upgrading to a plan with more credits, add the difference
+        if (newCreditsPerMonth > oldCreditsPerMonth && oldCurrentCredits > 0) {
+          const difference = newCreditsPerMonth - oldCreditsPerMonth;
+          return oldCurrentCredits + difference;
+        }
+        
+        // If downgrading or credits are 0, set to new amount
+        return newCreditsPerMonth;
+      })(),
     },
     include: { plan: true },
   });

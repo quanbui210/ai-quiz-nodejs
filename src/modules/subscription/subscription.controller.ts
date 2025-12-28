@@ -416,16 +416,25 @@ export const createCheckoutSession = async (
           return_url: `${frontendUrl}/subscription`,
         });
 
+        console.log("Created billing portal session for existing subscription:", {
+          sessionId: portalSession.id,
+          customerId: subscription.stripeCustomerId,
+          userId: req.user.id,
+        });
+
+        // Return both portalUrl and checkoutUrl for frontend compatibility
+        // Frontend should check usePortal flag and redirect accordingly
         return res.json({
           message: "Please use the Customer Portal to manage your subscription",
           portalUrl: portalSession.url,
+          checkoutUrl: portalSession.url, // Alias for frontend compatibility
           usePortal: true,
         });
       } catch (error: any) {
         console.error("Error creating portal session:", error);
         return res.status(500).json({
           error: "Failed to create portal session",
-          message: error.message,
+          message: error.message || "Unable to access billing portal. Please try again later.",
         });
       }
     }
@@ -490,10 +499,17 @@ export const createCheckoutSession = async (
       sessionId: session.id,
     });
   } catch (error: any) {
-    console.error("Create checkout session error:", error);
+    console.error("Create checkout session error:", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?.id,
+      planId: req.body?.planId,
+      type: error.type,
+      code: error.code,
+    });
     return res.status(500).json({
       error: "Failed to create checkout session",
-      message: error.message,
+      message: error.message || "An unexpected error occurred. Please try again.",
     });
   }
 };
@@ -564,6 +580,18 @@ export const handleWebhook = async (req: Request, res: Response) => {
         break;
       }
 
+      case "billing_portal.session.created": {
+        // This event is fired when a user accesses the Stripe billing portal
+        // The actual subscription changes will be handled by customer.subscription.updated
+        const session = event.data.object as any;
+        console.log("Billing portal session created:", {
+          sessionId: session.id,
+          customerId: session.customer,
+        });
+        // No action needed - subscription updates will be handled by customer.subscription.updated
+        break;
+      }
+
       default:
         console.log(`Unhandled event type: ${event.type}`);
     }
@@ -629,9 +657,13 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     where: { id: planId },
   });
 
+  // Use the same credit allocation logic as updateSubscriptionFromPlan
   let creditAllocation = { creditsPerMonth: 50, maxRolloverCredits: 0 };
+  let gotCreditsFromStripe = false;
+  
   if (plan) {
     try {
+      // Try to get from Stripe metadata first
       if (plan.stripeProductId) {
         const product = await stripe.products.retrieve(plan.stripeProductId);
         if (product?.metadata?.creditsPerMonth) {
@@ -639,12 +671,22 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
           creditAllocation.maxRolloverCredits = product.metadata.maxRolloverCredits
             ? parseInt(product.metadata.maxRolloverCredits, 10)
             : 0;
+          gotCreditsFromStripe = true;
+          console.log("Got credits from Stripe metadata:", creditAllocation);
         }
       }
     } catch (error: any) {
-      console.warn("Failed to get credit allocation from Stripe, using defaults");
+      console.warn("Failed to get credit allocation from Stripe, using plan name fallback:", error.message);
+    }
+    
+    // If Stripe metadata not found or returned 0, fallback to plan name mapping
+    if (!gotCreditsFromStripe && plan.name) {
+      creditAllocation = getPlanCredits(plan.name);
+      console.log("Using plan name fallback for credits:", { planName: plan.name, creditAllocation });
     }
   }
+  
+  console.log("Final credit allocation:", creditAllocation);
 
   // Initialize credit reset period (monthly, independent of subscription billing)
   const now = new Date();
@@ -693,7 +735,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
       // Update credit fields on plan change
       creditsPerMonth: creditAllocation.creditsPerMonth,
       maxRolloverCredits: creditAllocation.maxRolloverCredits,
-      // Give full credits when plan changes
+      // Give full credits when plan changes (always set, don't preserve old credits on upgrade)
       currentCredits: creditAllocation.creditsPerMonth,
       creditsUsedThisMonth: 0,
     },
@@ -703,8 +745,14 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     userId,
     planId,
     subscriptionId: updatedSubscription.id,
+    creditsPerMonth: updatedSubscription.creditsPerMonth,
+    currentCredits: updatedSubscription.currentCredits,
+    maxRolloverCredits: updatedSubscription.maxRolloverCredits,
   });
 
+  // Update other subscription limits (maxTopics, maxQuizzes, etc.)
+  // Note: updateSubscriptionFromPlan will preserve currentCredits if > 0
+  // Since we just set currentCredits correctly above, it should preserve them
   await updateSubscriptionFromPlan(userId, planId);
 
   const finalSubscription = await prisma.userSubscription.findUnique({
@@ -716,6 +764,9 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     userId,
     planId: finalSubscription?.planId,
     planName: finalSubscription?.plan?.name,
+    creditsPerMonth: finalSubscription?.creditsPerMonth,
+    currentCredits: finalSubscription?.currentCredits,
+    maxRolloverCredits: finalSubscription?.maxRolloverCredits,
     maxTopics: finalSubscription?.maxTopics,
     maxQuizzes: finalSubscription?.maxQuizzes,
   });
@@ -844,6 +895,12 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
   }
 
   if (newPlanId !== userSubscription.planId) {
+    console.log("Plan change detected, updating subscription:", {
+      userId: userSubscription.userId,
+      oldPlanId: userSubscription.planId,
+      newPlanId,
+    });
+    
     updateData.planId = newPlanId;
     await updateSubscriptionFromPlan(userSubscription.userId, newPlanId);
     
@@ -852,7 +909,13 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
       where: { id: userSubscription.id },
     });
     if (updatedSub) {
-      // Give full credits when plan changes
+      console.log("Credit allocation after plan change:", {
+        creditsPerMonth: updatedSub.creditsPerMonth,
+        maxRolloverCredits: updatedSub.maxRolloverCredits,
+        oldCurrentCredits: userSubscription.currentCredits,
+        newCurrentCredits: updatedSub.creditsPerMonth,
+      });
+      // Give full credits when plan changes (upgrade or downgrade)
       updateData.currentCredits = updatedSub.creditsPerMonth;
       updateData.creditsUsedThisMonth = 0;
     }
