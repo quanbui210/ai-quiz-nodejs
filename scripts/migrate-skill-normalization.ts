@@ -23,13 +23,11 @@ interface SkillData {
 }
 
 async function migrateSkillNormalization() {
-  console.log("🚀 Starting Skill Normalization Migration...\n");
+  console.log("Starting Skill Normalization Migration...\n");
 
   try {
-    // Step 1: Extract all unique skill names from existing data
-    console.log("📊 Step 1: Extracting unique skill names...");
+    console.log("Step 1: Extracting unique skill names...");
 
-    // Get unique skills from templates
     const templateSkills = await prisma.skillMasteryTemplate.findMany({
       select: {
         skillName: true,
@@ -111,7 +109,7 @@ async function migrateSkillNormalization() {
     console.log(`   Found ${uniqueSkills.length} unique skills\n`);
 
     // Step 2: Create Skill records
-    console.log("💾 Step 2: Creating Skill records...");
+    console.log("Step 2: Creating Skill records...");
     const skillRecords = new Map<string, string>(); // skillName -> skillId
 
     for (const skillData of uniqueSkills) {
@@ -127,7 +125,7 @@ async function migrateSkillNormalization() {
             category: skillData.category,
           },
         });
-        console.log(`   ✓ Created: ${skillData.name}`);
+        console.log(`   Created: ${skillData.name}`);
       } else {
         // Update category if needed
         if (skillData.category && !skill.category) {
@@ -135,7 +133,7 @@ async function migrateSkillNormalization() {
             where: { id: skill.id },
             data: { category: skillData.category },
           });
-          console.log(`   ↻ Updated category: ${skillData.name}`);
+          console.log(`   Updated category: ${skillData.name}`);
         } else {
           console.log(`   - Already exists: ${skillData.name}`);
         }
@@ -147,7 +145,7 @@ async function migrateSkillNormalization() {
     console.log(`\n   Total skills: ${skillRecords.size}\n`);
 
     // Step 3: Update SkillMasteryTemplate foreign keys
-    console.log("🔄 Step 3: Updating SkillMasteryTemplate foreign keys...");
+    console.log("Step 3: Updating SkillMasteryTemplate foreign keys...");
     const templates = await prisma.skillMasteryTemplate.findMany({
       select: { id: true, skillName: true },
       where: {
@@ -158,12 +156,12 @@ async function migrateSkillNormalization() {
     let updatedTemplates = 0;
     for (const template of templates) {
       if (!template.skillName) {
-        console.warn(`   ⚠️  Skipping template ${template.id} - skillName is null`);
+        console.warn(`   Skipping template ${template.id} - skillName is null`);
         continue;
       }
       const skillId = skillRecords.get(template.skillName);
       if (!skillId) {
-        console.error(`   ✗ ERROR: No skill found for: ${template.skillName}`);
+        console.error(`   ERROR: No skill found for: ${template.skillName}`);
         continue;
       }
 
@@ -181,10 +179,10 @@ async function migrateSkillNormalization() {
         updatedTemplates++;
       }
     }
-    console.log(`   ✓ Updated ${updatedTemplates} templates\n`);
+    console.log(`   Updated ${updatedTemplates} templates\n`);
 
     // Step 4: Update SkillMasteryGoal foreign keys
-    console.log("🔄 Step 4: Updating SkillMasteryGoal foreign keys...");
+    console.log("Step 4: Updating SkillMasteryGoal foreign keys...");
     const goals = await prisma.skillMasteryGoal.findMany({
       select: { id: true, skillName: true },
       where: {
@@ -195,12 +193,12 @@ async function migrateSkillNormalization() {
     let updatedGoals = 0;
     for (const goal of goals) {
       if (!goal.skillName) {
-        console.warn(`   ⚠️  Skipping goal ${goal.id} - skillName is null`);
+        console.warn(`   Skipping goal ${goal.id} - skillName is null`);
         continue;
       }
       const skillId = skillRecords.get(goal.skillName);
       if (!skillId) {
-        console.error(`   ✗ ERROR: No skill found for: ${goal.skillName}`);
+        console.error(`   ERROR: No skill found for: ${goal.skillName}`);
         continue;
       }
 
@@ -218,7 +216,7 @@ async function migrateSkillNormalization() {
         updatedGoals++;
       }
     }
-    console.log(`   ✓ Updated ${updatedGoals} goals\n`);
+    console.log(`   Updated ${updatedGoals} goals\n`);
 
     // Step 4.5: Backfill skillName for goals that have skillId but null skillName
     const goalsWithSkillId = await prisma.skillMasteryGoal.findMany({
@@ -245,13 +243,13 @@ async function migrateSkillNormalization() {
         });
         backfilledGoals++;
       } else {
-        console.warn(`   ⚠️  Skipping goal ${goal.id} - skillId ${goal.skillId} not found`);
+        console.warn(`   Skipping goal ${goal.id} - skillId ${goal.skillId} not found`);
       }
     }
-    console.log(`   ✓ Backfilled ${backfilledGoals} goals\n`);
+    console.log(`   Backfilled ${backfilledGoals} goals\n`);
 
     // Step 5: Update SkillMasteryQuizTemplate foreign keys
-    console.log("🔄 Step 5: Updating SkillMasteryQuizTemplate foreign keys...");
+    console.log("Step 5: Updating SkillMasteryQuizTemplate foreign keys...");
     const quizTemplates = await prisma.skillMasteryQuizTemplate.findMany({
       select: { id: true, skillName: true },
       where: {
@@ -262,12 +260,12 @@ async function migrateSkillNormalization() {
     let updatedQuizTemplates = 0;
     for (const quizTemplate of quizTemplates) {
       if (!quizTemplate.skillName) {
-        console.warn(`   ⚠️  Skipping quiz template ${quizTemplate.id} - skillName is null`);
+        console.warn(`   Skipping quiz template ${quizTemplate.id} - skillName is null`);
         continue;
       }
       const skillId = skillRecords.get(quizTemplate.skillName);
       if (!skillId) {
-        console.error(`   ✗ ERROR: No skill found for: ${quizTemplate.skillName}`);
+        console.error(`   ERROR: No skill found for: ${quizTemplate.skillName}`);
         continue;
       }
 
@@ -285,10 +283,10 @@ async function migrateSkillNormalization() {
         updatedQuizTemplates++;
       }
     }
-    console.log(`   ✓ Updated ${updatedQuizTemplates} quiz templates\n`);
+    console.log(`   Updated ${updatedQuizTemplates} quiz templates\n`);
 
     // Step 6: Link Quiz Templates to Roadmap Templates
-    console.log("🔗 Step 6: Linking Quiz Templates to Roadmap Templates...");
+    console.log("Step 6: Linking Quiz Templates to Roadmap Templates...");
     const allQuizTemplates = await prisma.skillMasteryQuizTemplate.findMany({
       select: { id: true, skillId: true, phase: true },
     });
@@ -320,15 +318,15 @@ async function migrateSkillNormalization() {
         }
       }
     }
-    console.log(`   ✓ Linked ${linkedQuizzes} quiz templates to roadmap templates\n`);
+    console.log(`   Linked ${linkedQuizzes} quiz templates to roadmap templates\n`);
 
-    console.log("✅ Migration completed successfully!\n");
-    console.log("📝 Next steps:");
+    console.log("Migration completed successfully!\n");
+    console.log("Next steps:");
     console.log("   1. Run: npx prisma migrate dev --name remove_skill_name_columns");
     console.log("   2. This will remove the old skillName columns");
     console.log("   3. Update your application code to use skillId instead of skillName\n");
   } catch (error) {
-    console.error("❌ Migration failed:", error);
+    console.error("Migration failed:", error);
     throw error;
   } finally {
     await prisma.$disconnect();

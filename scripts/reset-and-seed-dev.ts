@@ -25,24 +25,24 @@ const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 async function resetDatabase() {
-  console.log("🗑️  Resetting database...");
+  console.log("Resetting database...");
 
   try {
     // Delete in reverse dependency order (children first, parents last)
     await prisma.chatMessage.deleteMany();
-    console.log("  ✓ Deleted ChatMessage records");
+    console.log("  Deleted ChatMessage records");
 
     await prisma.chatSession.deleteMany();
-    console.log("  ✓ Deleted ChatSession records");
+    console.log("  Deleted ChatSession records");
 
     await prisma.documentEmbedding.deleteMany();
-    console.log("  ✓ Deleted DocumentEmbedding records");
+    console.log("  Deleted DocumentEmbedding records");
 
     await prisma.document.deleteMany();
-    console.log("  ✓ Deleted Document records");
+    console.log("  Deleted Document records");
 
     await prisma.answer.deleteMany();
-    console.log("  ✓ Deleted Answer records");
+    console.log("  Deleted Answer records");
 
     await prisma.explanation.deleteMany();
     console.log("  ✓ Deleted Explanation records");

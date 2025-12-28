@@ -135,11 +135,8 @@ function normalizeSkills(skills: string[]): string[] {
   return Array.from(normalized);
 }
 
-/**
- * Process a single job with AI
- */
+
 export async function processJobWithAI(jobId: string): Promise<void> {
-  // @ts-ignore - Prisma client will be regenerated after schema migration
   const job = await (prisma as any).job.findUnique({
     where: { id: jobId },
   });
@@ -148,7 +145,6 @@ export async function processJobWithAI(jobId: string): Promise<void> {
     throw new Error(`Job not found: ${jobId}`);
   }
 
-  // Note: We allow reprocessing - if job is already processed, we'll replace the analysis
 
   if (!job.descriptionRaw || job.descriptionRaw.trim().length < 50) {
     console.warn(`[Job Processor] Job ${jobId} has no description, skipping`);
@@ -160,7 +156,6 @@ export async function processJobWithAI(jobId: string): Promise<void> {
   try {
     const analysis = await extractSkillsWithAI(job.descriptionRaw, job.title);
 
-    // Normalize skills
     const mustHaveSkills = normalizeSkills(analysis.mustHaveSkills);
     const niceToHaveSkills = normalizeSkills(analysis.niceToHaveSkills);
 
@@ -190,8 +185,7 @@ export async function processJobWithAI(jobId: string): Promise<void> {
       )
     `;
 
-    // Mark job as processed
-    // @ts-ignore - Prisma client will be regenerated after schema migration
+  
     await (prisma as any).job.update({
       where: { id: jobId },
       data: {
@@ -201,7 +195,7 @@ export async function processJobWithAI(jobId: string): Promise<void> {
     });
 
     console.log(
-      `[Job Processor] ✅ Processed job ${jobId}: ${mustHaveSkills.length} must-have, ${niceToHaveSkills.length} nice-to-have skills`,
+      `[Job Processor] Processed job ${jobId}: ${mustHaveSkills.length} must-have, ${niceToHaveSkills.length} nice-to-have skills`,
     );
   } catch (error) {
     console.error(`[Job Processor] Error processing job ${jobId}:`, error);
@@ -209,9 +203,7 @@ export async function processJobWithAI(jobId: string): Promise<void> {
   }
 }
 
-/**
- * Process multiple unprocessed jobs
- */
+
 export async function processUnprocessedJobs(
   limit: number = 50,
 ): Promise<{ processed: number; failed: number }> {
@@ -220,13 +212,12 @@ export async function processUnprocessedJobs(
     where: {
       isProcessed: false,
     },
-    take: limit * 2, // Get more to filter out empty descriptions
+    take: limit * 2, 
     orderBy: {
-      scrapedAt: "desc", // Process newest first
+      scrapedAt: "desc", 
     },
   });
   
-  // Filter out jobs with no description
   const unprocessedJobs = allUnprocessedJobs.filter(
     (job: any) => job.descriptionRaw && job.descriptionRaw.trim().length >= 50
   ).slice(0, limit);

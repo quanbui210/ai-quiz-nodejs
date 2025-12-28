@@ -43,7 +43,7 @@ if (DISABLE_NODE_CRON) {
     }
   });
 
-  console.log("[Cron] ✅ Node-cron jobs scheduled:");
+  console.log("[Cron] Node-cron jobs scheduled:");
   console.log("  - Bi-monthly scraping: 2 AM on 1st and 15th of each month");
   console.log("  - Daily processing: 3 AM every day");
   console.log("  - Daily credit refresh: 4 AM every day");

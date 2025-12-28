@@ -284,7 +284,7 @@ A) [First option text]
 B) [Second option text]
 C) [Third option text]
 D) [Fourth option text]
-✅ Correct answer: [LETTER]) [EXACT OPTION TEXT FROM ABOVE]
+Correct answer: [LETTER]) [EXACT OPTION TEXT FROM ABOVE]
 
 Explanation: [Explanation text here, referencing the document]
 
@@ -450,7 +450,7 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
         }
 
         const correctMatch = line.match(
-          /✅\s*Correct answer:\s*([A-D])\)\s*(.+)$/i,
+          /Correct answer:\s*([A-D])\)\s*(.+)$/i,
         );
         if (correctMatch && correctMatch[1] && correctMatch[2]) {
           const letter = correctMatch[1];

@@ -15,22 +15,22 @@ import { processUnprocessedJobs } from "../src/modules/jobs/job-processor.servic
 dotenv.config();
 
 async function main() {
-  console.log("🤖 Starting job processing...\n");
+  console.log("Starting job processing...\n");
 
   try {
     const result = await processUnprocessedJobs(100); // Process up to 100 jobs
 
-    console.log(`✅ Processed ${result.processed} jobs, ${result.failed} failed\n`);
+    console.log(`Processed ${result.processed} jobs, ${result.failed} failed\n`);
 
     if (result.processed === 0) {
-      console.log("ℹ️  No unprocessed jobs found. All jobs are already processed!");
+      console.log("No unprocessed jobs found. All jobs are already processed!");
     } else {
-      console.log("🎉 Job processing complete!");
+      console.log("Job processing complete!");
       console.log(`   - ${result.processed} jobs processed`);
       console.log(`   - Ready for job matching!`);
     }
   } catch (error) {
-    console.error("❌ Error:", error);
+    console.error("Error:", error);
     process.exit(1);
   }
 }

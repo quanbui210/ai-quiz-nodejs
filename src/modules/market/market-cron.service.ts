@@ -96,12 +96,11 @@ async function fetchAndStoreInsights(
     `;
 
     console.log(
-      `[Market Cron] ✅ Stored insights for ${role} in ${location || country} (${country})`,
+      `[Market Cron] Stored insights for ${role} in ${location || country} (${country})`,
     );
   } catch (error) {
     console.error(
-      `[Market Cron] ❌ Failed to fetch/store insights for ${role} in ${location || country}:`,
-      error instanceof Error ? error.message : String(error),
+       error instanceof Error ? error.message : String(error),
     );
     // Continue with other roles even if one fails
   }

@@ -98,12 +98,12 @@ async function generateQuizForPhase(
 
     if (existing && SKIP_EXISTING) {
       console.log(
-        `⏭️  Skipping ${skillName} Phase ${phase} quiz - already exists`,
+        `Skipping ${skillName} Phase ${phase} quiz - already exists`,
       );
       return { success: true };
     }
 
-    console.log(`\n🔄 Generating quiz: ${skillName} - Phase ${phase}`);
+    console.log(`\nGenerating quiz: ${skillName} - Phase ${phase}`);
 
     // Extract phase content for quiz generation
     const phaseTheory = phaseData.tasks
@@ -252,13 +252,13 @@ IMPORTANT:
     });
 
     console.log(
-      `✅ Generated quiz: ${skillName} Phase ${phase} (10 questions)`,
+      `Generated quiz: ${skillName} Phase ${phase} (10 questions)`,
     );
     return { success: true, questions: validatedQuestions };
   } catch (error: any) {
     const errorMsg = error.message || String(error);
     console.error(
-      `❌ Failed: ${skillName} Phase ${phase} - ${errorMsg}`,
+      `Failed: ${skillName} Phase ${phase} - ${errorMsg}`,
     );
     return { success: false, error: errorMsg };
   }
@@ -282,7 +282,7 @@ async function generateQuizzesBatch(
     : templates;
 
   if (filteredTemplates.length === 0) {
-    console.error("❌ No skill templates found");
+    console.error("No skill templates found");
     process.exit(1);
   }
 
@@ -313,7 +313,7 @@ async function generateQuizzesBatch(
   // Filter out existing quizzes if --skip-existing
   let pendingCombinations = combinations;
   if (SKIP_EXISTING) {
-    console.log("\n🔍 Checking which quizzes already exist...");
+    console.log("\nChecking which quizzes already exist...");
     const existingQuizzes = await prisma.skillMasteryQuizTemplate.findMany({
       where: { isActive: true },
       select: {
@@ -332,21 +332,21 @@ async function generateQuizzesBatch(
     );
 
     const existingCount = combinations.length - pendingCombinations.length;
-    console.log(`   ✅ Found ${existingCount} existing quizzes`);
-    console.log(`   📝 ${pendingCombinations.length} quizzes remaining to generate`);
+    console.log(`   Found ${existingCount} existing quizzes`);
+    console.log(`   ${pendingCombinations.length} quizzes remaining to generate`);
   }
 
   if (pendingCombinations.length === 0) {
-    console.log("\n✨ All quizzes already exist! Nothing to generate.");
+    console.log("\nAll quizzes already exist! Nothing to generate.");
     stats.skipped = stats.total;
     return;
   }
 
-  console.log(`\n📊 Total quizzes to generate: ${stats.total}`);
-  console.log(`📦 Batch size: ${BATCH_SIZE}`);
-  console.log(`⏭️  Skip existing: ${SKIP_EXISTING}`);
+  console.log(`\nTotal quizzes to generate: ${stats.total}`);
+  console.log(`Batch size: ${BATCH_SIZE}`);
+  console.log(`Skip existing: ${SKIP_EXISTING}`);
   if (SPECIFIC_SKILLS) {
-    console.log(`🎯 Specific skills: ${SPECIFIC_SKILLS.join(", ")}`);
+    console.log(`Specific skills: ${SPECIFIC_SKILLS.join(", ")}`);
   }
   console.log("\n" + "=".repeat(60));
 
@@ -356,7 +356,7 @@ async function generateQuizzesBatch(
   const currentBatch = 1;
 
   console.log(
-    `\n📦 Processing batch ${currentBatch}/${totalBatches} (${toProcess.length} quizzes)`,
+    `\nProcessing batch ${currentBatch}/${totalBatches} (${toProcess.length} quizzes)`,
   );
 
   // Process sequentially to avoid rate limits
@@ -392,13 +392,13 @@ async function generateQuizzesBatch(
   // Show remaining count
   const remaining = pendingCombinations.length - toProcess.length;
   if (remaining > 0) {
-    console.log(`\n💡 ${remaining} quizzes remaining. Run the script again to continue.`);
+    console.log(`\n${remaining} quizzes remaining. Run the script again to continue.`);
   }
 }
 
 async function main() {
   try {
-    console.log("🚀 Starting skill mastery quiz generation...\n");
+    console.log("Starting skill mastery quiz generation...\n");
 
     const stats: GenerationStats = {
       total: 0,
@@ -412,14 +412,14 @@ async function main() {
 
     // Print summary
     console.log("\n" + "=".repeat(60));
-    console.log("📊 Generation Summary:");
+    console.log("Generation Summary:");
     console.log(`   Total quizzes: ${stats.total}`);
-    console.log(`   ✅ Generated: ${stats.generated}`);
-    console.log(`   ⏭️  Skipped: ${stats.skipped}`);
-    console.log(`   ❌ Failed: ${stats.failed}`);
+    console.log(`   Generated: ${stats.generated}`);
+    console.log(`   Skipped: ${stats.skipped}`);
+    console.log(`   Failed: ${stats.failed}`);
 
     if (stats.errors.length > 0) {
-      console.log("\n❌ Errors:");
+      console.log("\nErrors:");
       for (const err of stats.errors) {
         console.log(
           `   - ${err.skill} Phase ${err.phase}: ${err.error}`,
@@ -427,9 +427,9 @@ async function main() {
       }
     }
 
-    console.log("\n✨ Done!");
+    console.log("\nDone!");
   } catch (error) {
-    console.error("💥 Fatal error:", error);
+    console.error("Fatal error:", error);
     process.exit(1);
   } finally {
     await prisma.$disconnect();

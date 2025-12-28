@@ -266,7 +266,7 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
 
         const optionMatches = Array.from(
           block.matchAll(
-            /^([A-D])\)\s*(.+?)(?=\n[A-D]\)|\n\n|✅|Explanation:|$)/gm,
+            /^([A-D])\)\s*(.+?)(?=\n[A-D]\)|\n\n|Correct answer:|Explanation:|$)/gm,
           ),
         );
         const options: string[] = [];
@@ -302,7 +302,7 @@ function parseQuizResponse(quizText: string): ParsedQuiz | null {
         }
 
         const correctAnswerMatch = block.match(
-          /✅\s*Correct answer:\s*([A-D])\)\s*(.+?)(?=\n|$)/,
+          /Correct answer:\s*([A-D])\)\s*(.+?)(?=\n|$)/,
         );
         let correctAnswer = "";
 
@@ -520,7 +520,7 @@ export const createQuiz = async (
           B) [Second option text]
           C) [Third option text]
           D) [Fourth option text]
-          ✅ Correct answer: [LETTER]) [EXACT OPTION TEXT FROM ABOVE]
+          Correct answer: [LETTER]) [EXACT OPTION TEXT FROM ABOVE]
 
           Explanation: [Explanation text here]
 
@@ -533,7 +533,7 @@ export const createQuiz = async (
           B) 4
           C) 5
           D) 6
-          ✅ Correct answer: B) 4
+          Correct answer: B) 4
 
           Explanation: 2 + 2 equals 4, which is basic arithmetic.
 
@@ -544,7 +544,7 @@ export const createQuiz = async (
           B) Berlin
           C) Paris
           D) Madrid
-          ✅ Correct answer: C) Paris
+          Correct answer: C) Paris
 
           Explanation: Paris is the capital and largest city of France.
 
@@ -553,14 +553,14 @@ export const createQuiz = async (
           2. Question text MUST be on the line immediately after the header
           3. You MUST have exactly 4 options: A), B), C), D) - NO MORE, NO LESS
           4. Each option MUST be on its own line starting with the letter and )
-          5. The correct answer line MUST be: "✅ Correct answer: [LETTER]) [EXACT TEXT]" where [LETTER] is A, B, C, or D
+          5. The correct answer line MUST be: "Correct answer: [LETTER]) [EXACT TEXT]" where [LETTER] is A, B, C, or D
           6. The correct answer text MUST match EXACTLY one of the option texts above (case-sensitive, word-for-word)
           7. The explanation MUST start with "Explanation: " (not "**Explanation:**" or "*Explanation*")
           8. Leave a blank line between each question block
           9. Do NOT add any title, header, or extra text before Question 1
           10. Do NOT add any closing text after the last question
 
-          IMPORTANT: The correct answer format is "✅ Correct answer: B) 4" where "B" is the letter and "4" is the EXACT text from option B above.`,
+          IMPORTANT: The correct answer format is "Correct answer: B) 4" where "B" is the letter and "4" is the EXACT text from option B above.`,
         },
         {
           role: "user",

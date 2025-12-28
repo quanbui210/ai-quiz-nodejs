@@ -200,9 +200,9 @@ async function scrapeIndeedJobs(
     
     if (items.length > 0) {
       const firstItem = items[0];
-      console.log(`[Job Scraper] 🔍 Sample item keys:`, Object.keys(firstItem || {}));
-      console.log(`[Job Scraper] 🔍 Sample item (first 800 chars):`, JSON.stringify(firstItem, null, 2).substring(0, 800));
-      console.log(`[Job Scraper] 🔍 Key fields check:`, {
+      console.log(`[Job Scraper] Sample item keys:`, Object.keys(firstItem || {}));
+      console.log(`[Job Scraper] Sample item (first 800 chars):`, JSON.stringify(firstItem, null, 2).substring(0, 800));
+      console.log(`[Job Scraper] Key fields check:`, {
         hasJobKey: !!firstItem?.jobKey, 
         hasTitle: !!firstItem?.title, 
         hasCompanyName: !!firstItem?.companyName, 
@@ -377,7 +377,7 @@ async function storeJobs(
   }
   
   console.log(
-    `[Job Scraper] ✅ Stored ${storedCount} jobs, skipped ${skippedCount} total`,
+    `[Job Scraper] Stored ${storedCount} jobs, skipped ${skippedCount} total`,
   );
   
   if (skippedCount > 0 && storedCount === 0) {
@@ -524,7 +524,7 @@ export async function scrapePopularJobs(
       } catch (error) {
         const duration = ((Date.now() - startTime) / 1000).toFixed(1);
         console.error(
-          `[Job Scraper] [${currentCombination}/${totalCombinations}] ❌ Error scraping "${role}" in "${location}" after ${duration}s:`,
+          `[Job Scraper] [${currentCombination}/${totalCombinations}] Error scraping "${role}" in "${location}" after ${duration}s:`,
           error instanceof Error ? error.message : String(error),
         );
         // Continue with next combination instead of stopping

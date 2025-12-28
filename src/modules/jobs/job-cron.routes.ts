@@ -5,16 +5,11 @@ import { requireAdmin } from "../../middleware/admin.middleware";
 
 const router = Router();
 
-/**
- * Custom middleware: Allow either CRON_SECRET_KEY OR admin access
- * This allows external cron services to use CRON_SECRET_KEY,
- * while admin dashboard uses admin authentication
- */
+
 const requireAdminOrCronSecret = async (req: any, res: any, next: any) => {
   const authHeader = req.headers.authorization;
   const cronSecret = process.env.CRON_SECRET_KEY;
   
-  // If CRON_SECRET_KEY is provided and matches, allow access
   if (cronSecret && authHeader?.startsWith("Bearer ")) {
     const token = authHeader.substring(7);
     if (token === cronSecret) {
@@ -22,8 +17,7 @@ const requireAdminOrCronSecret = async (req: any, res: any, next: any) => {
     }
   }
   
-  // Otherwise, require admin access (user must be authenticated first)
-  // authenticate middleware should have run before this
+
   if (!req.user) {
     return res.status(401).json({
       error: "Unauthorized",

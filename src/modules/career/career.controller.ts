@@ -26,6 +26,7 @@ import { CreditService, Feature } from "../../services/credit.service";
 import { generateRoadmapPDF } from "../../utils/pdf-generator";
 import type { JobMarketInsights } from "../market/finnish-jobs.service";
 import OpenAI from "openai";
+import { trimResumeForRoadmap } from "../../utils/resume-trimmer.service";
 
 const openaiClient = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -178,8 +179,39 @@ async function processRoadmapGenerationAsync(
   jobMarketInsights: JobMarketInsights | null,
 ): Promise<void> {
   try {
-    // Generate roadmap plan (with cancellation support)
-    const roadmap = await generateRoadmapPlan(roadmapInput, abortSignal);
+    let trimmedResumeText = roadmapInput.resumeText;
+    
+    if (roadmapInput.resumeText) {
+      try {
+        const trimmed = await trimResumeForRoadmap(
+          roadmapInput.resumeText,
+          roadmapInput.targetRole,
+        );
+        trimmedResumeText = [
+          trimmed.overview,
+          trimmed.workExperience,
+          `Skills: ${trimmed.skills.join(", ")}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n");
+        
+        console.log(
+          `[Roadmap] Trimmed resume: ${trimmed.originalChars} → ${trimmed.totalChars} chars (${trimmed.reductionPercent}% reduction)`,
+        );
+      } catch (error: any) {
+        console.error("[Roadmap] Resume trimming failed, using original:", error);
+        trimmedResumeText = roadmapInput.resumeText;
+      }
+    }
+
+    const roadmap = await generateRoadmapPlan(
+      {
+        ...roadmapInput,
+        resumeText: trimmedResumeText,
+        useWebSearch: true,
+      },
+      abortSignal,
+    );
 
     // Check if cancelled after generation
     if (abortSignal.aborted) {

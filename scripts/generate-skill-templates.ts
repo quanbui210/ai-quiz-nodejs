@@ -74,15 +74,15 @@ async function generateTemplate(
     const certLabel = includeCertification === null || includeCertification === undefined ? "LLM decides" : String(includeCertification);
     
     if (existing && SKIP_EXISTING) {
-      console.log(`⏭️  Skipping ${skillName} (${targetLevel}, cert: ${certLabel}) - already exists`);
+      console.log(`Skipping ${skillName} (${targetLevel}, cert: ${certLabel}) - already exists`);
       return { success: true };
     }
 
     if (existing) {
-      console.log(`⚠️  Template exists for ${skillName} (${targetLevel}, cert: ${certLabel}), regenerating...`);
+      console.log(`Template exists for ${skillName} (${targetLevel}, cert: ${certLabel}), regenerating...`);
     }
 
-    console.log(`\n🔄 Generating: ${skillName} → ${targetLevel} (certification: ${certLabel})`);
+    console.log(`\nGenerating: ${skillName} -> ${targetLevel} (certification: ${certLabel})`);
 
     // Generate roadmap
     // If includeCertification is null/undefined, let LLM decide
@@ -125,11 +125,11 @@ async function generateTemplate(
       },
     });
 
-    console.log(`✅ Generated: ${skillName} (${targetLevel}, cert: ${certLabel}) - ${roadmap.totalWeeks} weeks`);
+    console.log(`Generated: ${skillName} (${targetLevel}, cert: ${certLabel}) - ${roadmap.totalWeeks} weeks`);
     return { success: true };
   } catch (error: any) {
     const errorMsg = error.message || String(error);
-    console.error(`❌ Failed: ${skillName} (${targetLevel}, cert: ${includeCertification}) - ${errorMsg}`);
+    console.error(`Failed: ${skillName} (${targetLevel}, cert: ${includeCertification}) - ${errorMsg}`);
     return { success: false, error: errorMsg };
   }
 }
@@ -161,7 +161,7 @@ async function generateTemplatesBatch(
   // This way, each run only processes missing templates
   let pendingCombinations = combinations;
   if (SKIP_EXISTING) {
-    console.log("\n🔍 Checking which templates already exist...");
+    console.log("\nChecking which templates already exist...");
     const existingTemplates = await prisma.skillMasteryTemplate.findMany({
       where: { isActive: true },
       select: {
@@ -183,21 +183,21 @@ async function generateTemplatesBatch(
     });
 
     const existingCount = combinations.length - pendingCombinations.length;
-    console.log(`   ✅ Found ${existingCount} existing templates`);
-    console.log(`   📝 ${pendingCombinations.length} templates remaining to generate`);
+    console.log(`   Found ${existingCount} existing templates`);
+    console.log(`   ${pendingCombinations.length} templates remaining to generate`);
   }
 
   if (pendingCombinations.length === 0) {
-    console.log("\n✨ All templates already exist! Nothing to generate.");
+    console.log("\nAll templates already exist! Nothing to generate.");
     stats.skipped = stats.total;
     return;
   }
 
-  console.log(`\n📊 Total combinations: ${stats.total}`);
-  console.log(`📦 Batch size: ${BATCH_SIZE}`);
-  console.log(`⏭️  Skip existing: ${SKIP_EXISTING}`);
+  console.log(`\nTotal combinations: ${stats.total}`);
+  console.log(`Batch size: ${BATCH_SIZE}`);
+  console.log(`Skip existing: ${SKIP_EXISTING}`);
   if (SPECIFIC_SKILLS) {
-    console.log(`🎯 Specific skills (${SPECIFIC_SKILLS.length}): ${SPECIFIC_SKILLS.join(", ")}`);
+    console.log(`Specific skills (${SPECIFIC_SKILLS.length}): ${SPECIFIC_SKILLS.join(", ")}`);
     console.log(`   Filtered skills found: ${skills.length}`);
   }
   console.log("\n" + "=".repeat(60));
@@ -207,7 +207,7 @@ async function generateTemplatesBatch(
   const totalBatches = Math.ceil(pendingCombinations.length / BATCH_SIZE);
   const currentBatch = 1;
 
-  console.log(`\n📦 Processing batch ${currentBatch}/${totalBatches} (${toProcess.length} templates)`);
+  console.log(`\nProcessing batch ${currentBatch}/${totalBatches} (${toProcess.length} templates)`);
 
   // Process sequentially to avoid rate limits
   for (let idx = 0; idx < toProcess.length; idx++) {
@@ -251,20 +251,20 @@ async function generateTemplatesBatch(
 
   const remaining = pendingCombinations.length - toProcess.length;
   if (remaining > 0) {
-    console.log(`\n💡 ${remaining} templates remaining. Run the script again to continue.`);
+    console.log(`\n${remaining} templates remaining. Run the script again to continue.`);
   }
 }
 
 async function main() {
   try {
-    console.log("🚀 Starting skill mastery template generation...\n");
+    console.log("Starting skill mastery template generation...\n");
 
     const skills: SkillConfig[] = SPECIFIC_SKILLS
       ? skillsData.skills.filter((s) => SPECIFIC_SKILLS.includes(s.name))
       : skillsData.skills;
 
     if (skills.length === 0) {
-      console.error("❌ No skills found to generate");
+      console.error("No skills found to generate");
       if (SPECIFIC_SKILLS) {
         console.error(`   Requested skills: ${SPECIFIC_SKILLS.join(", ")}`);
         console.error(`   Available skills in JSON: ${skillsData.skills.map(s => s.name).join(", ")}`);
@@ -277,7 +277,7 @@ async function main() {
       const foundNames = skills.map(s => s.name);
       const notFound = SPECIFIC_SKILLS.filter(name => !foundNames.includes(name));
       if (notFound.length > 0) {
-        console.warn(`⚠️  Warning: ${notFound.length} skill(s) not found in JSON: ${notFound.join(", ")}`);
+        console.warn(`Warning: ${notFound.length} skill(s) not found in JSON: ${notFound.join(", ")}`);
         console.warn(`   Found ${skills.length} matching skill(s): ${foundNames.join(", ")}`);
       }
     }
@@ -294,22 +294,22 @@ async function main() {
 
     // Print summary
     console.log("\n" + "=".repeat(60));
-    console.log("📊 Generation Summary:");
+    console.log("Generation Summary:");
     console.log(`   Total combinations: ${stats.total}`);
-    console.log(`   ✅ Generated: ${stats.generated}`);
-    console.log(`   ⏭️  Skipped: ${stats.skipped}`);
-    console.log(`   ❌ Failed: ${stats.failed}`);
+    console.log(`   Generated: ${stats.generated}`);
+    console.log(`   Skipped: ${stats.skipped}`);
+    console.log(`   Failed: ${stats.failed}`);
 
     if (stats.errors.length > 0) {
-      console.log("\n❌ Errors:");
+      console.log("\nErrors:");
       for (const err of stats.errors) {
         console.log(`   - ${err.skill} (${err.level}, cert: ${err.cert}): ${err.error}`);
       }
     }
 
-    console.log("\n✨ Done!");
+    console.log("\nDone!");
   } catch (error) {
-    console.error("💥 Fatal error:", error);
+    console.error("Fatal error:", error);
     process.exit(1);
   } finally {
     await prisma.$disconnect();

@@ -9,6 +9,12 @@ import {
 import { observeOpenAI } from "@langfuse/openai";
 import { trace } from "@opentelemetry/api";
 import type { JobMarketInsights } from "../market/finnish-jobs.service";
+import {
+  searchCourses,
+  searchTutorials,
+  searchDocumentation,
+  searchCertifications,
+} from "../../utils/tavily-search.service";
 
 const DEFAULT_CAREER_MODEL =
   process.env.OPENAI_CAREER_MODEL ||
@@ -424,13 +430,14 @@ export interface RoadmapInput {
   targetRole: string;
   timeframe: Timeframe;
   currentSkills: string[];
-  analysis: SkillGapAnalysis | null; // Can be null if no resume provided
+  analysis: SkillGapAnalysis | null; 
   resumeText?: string | null;
   existingProgress?: {
     completedSkills?: string[];
     blockedAreas?: string[];
   };
   jobMarketInsights?: JobMarketInsights | null;
+  useWebSearch?: boolean;
 }
 
 export const generateRoadmapPlan = async (
@@ -446,7 +453,7 @@ export const generateRoadmapPlan = async (
 
   try {
     const resumeTextTruncated = input.resumeText
-      ? input.resumeText.substring(0, 8000) // Limit to 8000 chars
+      ? input.resumeText.substring(0, 8000) 
       : null;
 
     span.setAttributes({
@@ -506,9 +513,121 @@ export const generateRoadmapPlan = async (
         }
       : null;
 
-    // Check if cancelled before making API call
     if (abortSignal?.aborted) {
       throw new Error("Roadmap generation was cancelled");
+    }
+
+    let tavilyResources: {
+      courses: Array<{ title: string; url: string; description?: string }>;
+      tutorials: Array<{ title: string; url: string; description?: string }>;
+      documentation: Array<{ title: string; url: string; description?: string }>;
+      certifications: Array<{ title: string; url: string; description?: string }>;
+    } = {
+      courses: [],
+      tutorials: [],
+      documentation: [],
+      certifications: [],
+    };
+
+    if (input.useWebSearch && process.env.TAVILY_API_KEY) {
+      try {
+        const missingSkills = input.analysis?.missingSkills || [];
+        const skillsToSearch = missingSkills.length > 0 
+          ? missingSkills.slice(0, 5)
+          : input.currentSkills.slice(0, 3);
+
+        if (skillsToSearch.length > 0) {
+          const searchPromises = skillsToSearch.flatMap((skill) => [
+            searchCourses(skill, { year: new Date().getFullYear(), maxResults: 8 }),
+            searchTutorials(skill, { maxResults: 5 }),
+            searchDocumentation(skill, { maxResults: 5 }),
+          ]);
+
+          const results = await Promise.all(searchPromises);
+          
+          for (let i = 0; i < results.length; i += 3) {
+            const courses = results[i] || [];
+            const tutorials = results[i + 1] || [];
+            const docs = results[i + 2] || [];
+
+            tavilyResources.courses.push(
+              ...courses.map((r) => ({ 
+                title: r.title, 
+                url: r.url, 
+                description: r.description 
+              }))
+            );
+            tavilyResources.tutorials.push(
+              ...tutorials.map((r) => ({ 
+                title: r.title, 
+                url: r.url, 
+                description: r.description 
+              }))
+            );
+            tavilyResources.documentation.push(
+              ...docs.map((r) => ({ 
+                title: r.title, 
+                url: r.url, 
+                description: r.description 
+              }))
+            );
+          }
+
+          const uniqueCourses = Array.from(
+            new Map(tavilyResources.courses.map(r => [r.url, r])).values()
+          );
+          const uniqueTutorials = Array.from(
+            new Map(tavilyResources.tutorials.map(r => [r.url, r])).values()
+          );
+          const uniqueDocs = Array.from(
+            new Map(tavilyResources.documentation.map(r => [r.url, r])).values()
+          );
+
+          tavilyResources.courses = uniqueCourses;
+          tavilyResources.tutorials = uniqueTutorials;
+          tavilyResources.documentation = uniqueDocs;
+
+          console.log(
+            `[Roadmap] Found ${tavilyResources.courses.length} courses, ${tavilyResources.tutorials.length} tutorials, ${tavilyResources.documentation.length} docs via Tavily`,
+          );
+        }
+      } catch (error: any) {
+        const isQuotaError = error?.response?.status === 429 || 
+          error?.message?.toLowerCase().includes("quota") ||
+          error?.message?.toLowerCase().includes("rate limit");
+        
+        if (isQuotaError) {
+          console.warn("[Roadmap] Tavily API quota exceeded, falling back to LLM internal knowledge");
+        } else {
+          console.error("[Roadmap] Tavily search error, falling back to LLM internal knowledge:", error.message);
+        }
+      }
+    }
+
+    const hasTavilyResults = tavilyResources.courses.length > 0 || 
+      tavilyResources.tutorials.length > 0 || 
+      tavilyResources.documentation.length > 0;
+
+    let tavilyContext = "";
+    if (hasTavilyResults) {
+      tavilyContext = `
+
+UP-TO-DATE RESOURCES FROM WEB SEARCH:
+${tavilyResources.courses.length > 0
+  ? `COURSES:\n${tavilyResources.courses.map((c) => `- ${c.title}: ${c.url}${c.description ? ` (${c.description.substring(0, 100)})` : ""}`).join("\n")}`
+  : ""}
+${tavilyResources.tutorials.length > 0
+  ? `TUTORIALS:\n${tavilyResources.tutorials.map((t) => `- ${t.title}: ${t.url}${t.description ? ` (${t.description.substring(0, 100)})` : ""}`).join("\n")}`
+  : ""}
+${tavilyResources.documentation.length > 0
+  ? `DOCUMENTATION:\n${tavilyResources.documentation.map((d) => `- ${d.title}: ${d.url}${d.description ? ` (${d.description.substring(0, 100)})` : ""}`).join("\n")}`
+  : ""}
+
+PRIORITIZE these web search results when creating resources. Mark them with "source": "tavily" and "isUpToDate": true.`;
+    } else {
+      tavilyContext = `
+
+NOTE: If no web search results are provided above, use your internal knowledge to suggest real, current resources (courses, tutorials, documentation) that are relevant and up-to-date. Always prioritize official documentation and well-known learning platforms.`;
     }
 
     const completion = await openai.chat.completions.create({
@@ -516,8 +635,6 @@ export const generateRoadmapPlan = async (
     temperature: 0.45,
     max_tokens: 8000,
     response_format: { type: "json_object" },
-    // Note: OpenAI SDK doesn't directly support AbortSignal in v4,
-    // but we can check the signal before and after the call
     messages: [
       {
         role: "system",
@@ -629,6 +746,7 @@ RESUME-BASED ROADMAP:
 - Suggest projects and learning that complement their background
 - Consider technologies they've already used and build upon them
 - Make the roadmap more personalized based on their actual career trajectory
+${tavilyContext}
 
 Respond ONLY with valid JSON matching this structure.`,
       },

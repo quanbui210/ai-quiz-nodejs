@@ -96,7 +96,7 @@ app.get("/", (req, res) => {
       credits: "/api/v1/credits",
     },
     notes: {
-      market: "⚠️ /api/v1/market/insights is DEPRECATED - use /api/jobs/trends instead",
+      market: "/api/v1/market/insights is DEPRECATED - use /api/jobs/trends instead",
       jobs: "Job matching system - match CV to jobs, get market trends, browse recent jobs",
       batch: "Cron endpoints - trigger job scraping and processing (admin only)",
     },
