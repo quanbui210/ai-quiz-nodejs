@@ -7,6 +7,7 @@ import {
   generateCVEmbeddingIfNeeded,
   analyzeJobMatchWithLLM,
 } from "./job-matching.service";
+import { processJobWithAI } from "./job-processor.service";
 import { CreditService, Feature } from "../../services/credit.service";
 import crypto from "crypto";
 
@@ -329,26 +330,73 @@ export const matchSingleJob = async (
     );
     creditTransactionId = transactionId;
 
-    const job = await (prisma as any).job.findUnique({
+    let job = await (prisma as any).job.findUnique({
       where: { id: jobId },
       include: {
         analysis: true,
       },
     });
 
-    if (!job || !job.analysis) {
+    if (!job) {
       if (creditTransactionId) {
         await CreditService.refundCredits(
           req.user.id,
           Feature.JOB_MATCHING,
-          "Job not found or not analyzed",
+          "Job not found",
           { jobId, transactionId: creditTransactionId },
         ).catch(console.error);
       }
       return res.status(404).json({
         error: "Job not found",
-        message: "The requested job does not exist or has not been analyzed yet.",
+        message: "The requested job does not exist.",
       });
+    }
+
+    // If job exists but hasn't been analyzed yet, analyze it on-demand
+    if (!job.analysis) {
+      console.log(`[Job Matching] Job ${jobId} not analyzed yet, analyzing on-demand...`);
+      try {
+        await processJobWithAI(jobId);
+        
+        // Reload job with analysis
+        job = await (prisma as any).job.findUnique({
+          where: { id: jobId },
+          include: {
+            analysis: true,
+          },
+        });
+
+        if (!job || !job.analysis) {
+          if (creditTransactionId) {
+            await CreditService.refundCredits(
+              req.user.id,
+              Feature.JOB_MATCHING,
+              "Failed to analyze job",
+              { jobId, transactionId: creditTransactionId },
+            ).catch(console.error);
+          }
+          return res.status(500).json({
+            error: "Failed to analyze job",
+            message: "The job could not be analyzed. Please try again later.",
+          });
+        }
+        
+        console.log(`[Job Matching] Job ${jobId} analyzed successfully, proceeding with match...`);
+      } catch (analysisError: any) {
+        console.error(`[Job Matching] Error analyzing job ${jobId}:`, analysisError);
+        if (creditTransactionId) {
+          await CreditService.refundCredits(
+            req.user.id,
+            Feature.JOB_MATCHING,
+            "Failed to analyze job",
+            { jobId, transactionId: creditTransactionId, error: analysisError.message },
+          ).catch(console.error);
+        }
+        return res.status(500).json({
+          error: "Failed to analyze job",
+          message: analysisError.message || "The job could not be analyzed. Please try again later.",
+        });
+      }
     }
 
     let cvEmbedding = await getUserCVEmbedding(req.user.id);
