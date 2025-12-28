@@ -67,13 +67,10 @@ interface MatchJobsParams {
   minMatchScore?: number;
 }
 
-/**
- * Analyze job match using LLM
- * This replaces manual scoring with AI-powered analysis
- */
-async function analyzeJobMatchWithLLM(params: {
+
+export async function analyzeJobMatchWithLLM(params: {
   job: any;
-  cvText?: string; // CV text content for detailed analysis
+  cvText?: string; 
   userSkills: string[];
   userExperienceYears?: number;
   userEducationLevel?: string;

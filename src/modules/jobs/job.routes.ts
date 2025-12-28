@@ -1,6 +1,15 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/auth.middleware";
-import { matchJobs, getRecentJobs } from "./job-matching.controller";
+import { 
+  matchJobs, 
+  getRecentJobs, 
+  matchSingleJob, 
+  matchSpecificJob,
+  getSavedMatches,
+  getSavedMatch,
+  updateSavedMatch,
+  deleteSavedMatch,
+} from "./job-matching.controller";
 import { getMarketTrends } from "./job-trends.controller";
 
 const router = Router();
@@ -110,6 +119,18 @@ router.get("/match", authenticate, matchJobs);
  *                 userProfile: { type: object, nullable: true }
  */
 router.get("/recent", authenticate, getRecentJobs);
+
+router.post("/:jobId/match", authenticate, matchSingleJob);
+
+router.post("/match-specific", authenticate, matchSpecificJob);
+
+router.get("/matches/saved", authenticate, getSavedMatches);
+
+router.get("/matches/:matchId", authenticate, getSavedMatch);
+
+router.patch("/matches/:matchId", authenticate, updateSavedMatch);
+
+router.delete("/matches/:matchId", authenticate, deleteSavedMatch);
 
 /**
  * @swagger

@@ -697,6 +697,16 @@ model JobAnalysis {
 }
 
 // Cache user-job match results to avoid recalculating
+enum ApplicationStatus {
+  VIEWED
+  SAVED
+  APPLIED
+  INTERVIEW
+  REJECTED
+  OFFERED
+  WITHDRAWN
+}
+
 model UserJobMatch {
   id                String   @id @default(uuid())
   userId            String
@@ -709,6 +719,11 @@ model UserJobMatch {
   educationMatch    Boolean
   languageMatch     Boolean
   matchExplanation  Json     // Full explanation object
+  userNotes         String?  @db.Text // User's personal notes
+  applicationStatus ApplicationStatus? // Current application status
+  appliedAt         DateTime? // When user applied
+  interviewDate     DateTime? // Scheduled interview date
+  outcome           String? // Final outcome (e.g., "accepted", "rejected")
   calculatedAt      DateTime @default(now())
   updatedAt         DateTime @updatedAt
   
@@ -720,6 +735,8 @@ model UserJobMatch {
   @@index([jobId])
   @@index([matchScore])
   @@index([calculatedAt])
+  @@index([applicationStatus])
+  @@index([userId, applicationStatus])
 }
 
 model MarketTrends {

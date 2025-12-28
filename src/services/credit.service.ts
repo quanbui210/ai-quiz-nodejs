@@ -14,7 +14,7 @@ export enum Feature {
 export const DEFAULT_CREDIT_COSTS: Record<Feature, number> = {
   [Feature.QUIZ_GENERATION]: 2,
   [Feature.DOCUMENT_ANALYSIS]: 3,
-  [Feature.JOB_MATCHING]: 5,
+  [Feature.JOB_MATCHING]: 4,
   [Feature.SKILL_MASTERY_ROADMAP]: 5,
   [Feature.CAREER_ROADMAP]: 8,
   [Feature.INTERVIEW_SESSION]: 5,
