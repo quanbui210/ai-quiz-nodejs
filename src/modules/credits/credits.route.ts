@@ -1,10 +1,14 @@
 import { Router, Request, Response } from "express";
 import { CreditService } from "../../services/credit.service";
 import { authenticate } from "../../middleware/auth.middleware";
+import {
+  getCreditPacks,
+  createCreditPurchaseCheckout,
+  handleCreditPurchaseWebhook,
+} from "./credit-purchase.controller";
+import { verifyWebhookSignature } from "../../utils/stripe";
 
 const router = Router();
-
-router.use(authenticate);
 
 
 router.get("/balance", async (req: Request & { user?: any }, res: Response) => {
@@ -64,6 +68,10 @@ router.get("/analytics", async (req: Request & { user?: any }, res: Response) =>
     return res.status(500).json({ error: "Failed to get credit analytics" });
   }
 });
+
+router.get("/packs", getCreditPacks);
+
+router.post("/purchase", authenticate, createCreditPurchaseCheckout);
 
 export default router;
 

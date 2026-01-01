@@ -320,6 +320,23 @@ model CreditPricing {
   @@index([feature, isActive])
 }
 
+model CreditPack {
+  id            String   @id @default(uuid())
+  credits       Int      // Number of credits in pack
+  price         Int      // Price in cents (e.g., 299 = €2.99)
+  stripePriceId String?  @unique // Stripe Price ID for one-time payment
+  isActive       Boolean  @default(true)
+  displayOrder   Int      @default(0) // For sorting in UI
+  bonusCredits   Int      @default(0) // Optional bonus (e.g., "Buy 50, get 5 free")
+  description    String?  // Marketing description
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  @@unique([credits]) // One pack per credit amount
+  @@index([isActive, displayOrder])
+}
+
 model AdminUser {
   id          String    @id @default(uuid())
   userId      String    @unique

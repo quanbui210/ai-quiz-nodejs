@@ -7,6 +7,8 @@ import {
 } from "../../utils/subscription";
 import { getUserSubscription, getUserUsage } from "../../utils/usage";
 import { AuthenticatedRequest } from "../../middleware/limit-check.middleware";
+import { CreditService } from "../../services/credit.service";
+import { CreditTransactionType } from "@prisma/client";
 import Stripe from "stripe";
 
 
@@ -543,9 +545,16 @@ export const handleWebhook = async (req: Request, res: Response) => {
           sessionId: session.id,
           userId: session.metadata?.userId,
           planId: session.metadata?.planId,
+          packId: session.metadata?.packId,
           subscriptionId: session.subscription,
+          mode: session.mode,
         });
-        await handleCheckoutCompleted(session);
+        
+        if (session.mode === "payment" && session.metadata?.packId) {
+          await handleCreditPurchaseCompleted(session);
+        } else {
+          await handleCheckoutCompleted(session);
+        }
         console.log("Successfully processed checkout.session.completed");
         break;
       }
@@ -770,6 +779,45 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
     maxTopics: finalSubscription?.maxTopics,
     maxQuizzes: finalSubscription?.maxQuizzes,
   });
+}
+
+async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
+  const userId = session.metadata?.userId;
+  const packId = session.metadata?.packId;
+  const totalCredits = parseInt(session.metadata?.totalCredits || "0", 10);
+
+  console.log("handleCreditPurchaseCompleted called with:", {
+    userId,
+    packId,
+    totalCredits,
+    sessionId: session.id,
+  });
+
+  if (!userId || !packId || totalCredits <= 0) {
+    console.error("Invalid credit purchase metadata:", session.metadata);
+    return;
+  }
+
+  try {
+    await CreditService.addCredits(
+      userId,
+      totalCredits,
+      CreditTransactionType.PURCHASE,
+      `Purchased ${totalCredits} credits (pack: ${packId})`,
+      {
+        packId,
+        credits: parseInt(session.metadata?.credits || "0", 10),
+        bonusCredits: parseInt(session.metadata?.bonusCredits || "0", 10),
+        stripeSessionId: session.id,
+        stripePaymentIntentId: session.payment_intent as string | undefined,
+      },
+    );
+
+    console.log(`Successfully added ${totalCredits} credits to user ${userId} from pack ${packId}`);
+  } catch (error: any) {
+    console.error("Error processing credit purchase:", error);
+    throw error;
+  }
 }
 
 async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
