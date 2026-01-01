@@ -399,27 +399,27 @@ export const matchSingleJob = async (
       }
     }
 
-    let cvEmbedding = await getUserCVEmbedding(req.user.id);
-    if (!cvEmbedding) {
-      cvEmbedding = await generateCVEmbeddingIfNeeded(
-        req.user.id,
-        resume.parsedText,
-      );
-    }
+        let cvEmbedding = await getUserCVEmbedding(req.user.id);
+        if (!cvEmbedding) {
+          cvEmbedding = await generateCVEmbeddingIfNeeded(
+            req.user.id,
+            resume.parsedText,
+          );
+        }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        currentSkills: true,
-        yearsOfExperience: true,
-        industry: true,
-        currentPosition: true,
-      },
-    });
+        const user = await prisma.user.findUnique({
+          where: { id: req.user.id },
+          select: {
+            currentSkills: true,
+            yearsOfExperience: true,
+            industry: true,
+            currentPosition: true, 
+          },
+        });
 
-    const userSkills = resume.extractedSkills?.length > 0
-      ? resume.extractedSkills
-      : user?.currentSkills || [];
+        const userSkills = resume.extractedSkills?.length > 0
+          ? resume.extractedSkills
+          : user?.currentSkills || [];
 
     const embeddingString = `[${cvEmbedding.join(",")}]`;
     const similarityResult = await prisma.$queryRawUnsafe<Array<{
@@ -465,11 +465,16 @@ export const matchSingleJob = async (
       cvText: resume.parsedText.substring(0, 5000),
       userSkills: filteredUserSkills,
       userExperienceYears: resume.yearsOfExperience || user?.yearsOfExperience,
-      userEducationLevel: resume.educationLevel || undefined,
-      userLanguages: ["Finnish", "English"],
-      userCurrentPosition: user?.currentPosition || undefined,
+            userEducationLevel: resume.educationLevel || undefined,
+            userLanguages: ["Finnish", "English"],
+            userCurrentPosition: user?.currentPosition || undefined,
       vectorSimilarity,
+      pageCount: resume.pageCount || undefined,
     });
+
+    if (!analysis.matchExplanation?.ats) {
+      console.warn(`[Job Matching] ATS field missing in match analysis for job ${job.id}. This may indicate LLM response issue.`);
+    }
 
     try {
       await (prisma as any).userJobMatch.upsert({
@@ -521,16 +526,16 @@ export const matchSingleJob = async (
       match: {
         id: savedMatch?.id,
         job: {
-          id: job.id,
-          title: job.title,
-          company: job.company,
-          companyLogoUrl: job.companyLogoUrl || null,
-          location: job.location,
-          url: job.url,
-          postedDate: job.postedDate,
-          salaryMin: job.salaryMin,
-          salaryMax: job.salaryMax,
-          salaryCurrency: job.salaryCurrency,
+        id: job.id,
+        title: job.title,
+        company: job.company,
+        companyLogoUrl: job.companyLogoUrl || null,
+        location: job.location,
+        url: job.url,
+        postedDate: job.postedDate,
+        salaryMin: job.salaryMin,
+        salaryMax: job.salaryMax,
+        salaryCurrency: job.salaryCurrency,
         },
         analysis: {
           mustHaveSkills: job.analysis.mustHaveSkills || [],
@@ -544,7 +549,12 @@ export const matchSingleJob = async (
         experienceMatch: analysis.experienceMatch,
         educationMatch: analysis.educationMatch,
         languageMatch: analysis.languageMatch,
-        matchExplanation: analysis.matchExplanation,
+        matchExplanation: analysis.matchExplanation || (savedMatch?.matchExplanation as any) || {
+          summary: "Match analysis available.",
+          strengths: [],
+          gaps: [],
+          recommendations: [],
+        },
         userNotes: savedMatch?.userNotes || null,
         applicationStatus: savedMatch?.applicationStatus || null,
         appliedAt: savedMatch?.appliedAt ? savedMatch.appliedAt.toISOString() : null,
@@ -630,7 +640,7 @@ export const getSavedMatches = async (
         educationLevel: match.jobAnalysis.educationLevel,
         languageRequirements: match.jobAnalysis.languageRequirements || [],
       },
-      matchScore: match.matchScore,
+          matchScore: match.matchScore,
       skillMatch: {
         score: match.skillMatchScore,
         matchingMustHave: [],
@@ -638,10 +648,15 @@ export const getSavedMatches = async (
         matchingNiceToHave: [],
         missingNiceToHave: [],
       },
-      experienceMatch: match.experienceMatch,
-      educationMatch: match.educationMatch,
-      languageMatch: match.languageMatch,
-      matchExplanation: match.matchExplanation,
+          experienceMatch: match.experienceMatch,
+          educationMatch: match.educationMatch,
+          languageMatch: match.languageMatch,
+      matchExplanation: match.matchExplanation || {
+        summary: "Match analysis available.",
+        strengths: [],
+        gaps: [],
+        recommendations: [],
+      },
       userNotes: match.userNotes || null,
       applicationStatus: match.applicationStatus || null,
       appliedAt: match.appliedAt ? match.appliedAt.toISOString() : null,
@@ -729,7 +744,12 @@ export const getSavedMatch = async (
         experienceMatch: match.experienceMatch,
         educationMatch: match.educationMatch,
         languageMatch: match.languageMatch,
-        matchExplanation: match.matchExplanation,
+        matchExplanation: match.matchExplanation || {
+          summary: "Match analysis available.",
+          strengths: [],
+          gaps: [],
+          recommendations: [],
+        },
         userNotes: match.userNotes || null,
         applicationStatus: match.applicationStatus || null,
         appliedAt: match.appliedAt ? match.appliedAt.toISOString() : null,

@@ -342,16 +342,18 @@ model Document {
   status     DocumentStatus @default(UPLOADING)
   vectorized Boolean        @default(false)
   chunkCount Int            @default(0)
+  pageCount  Int?           // Number of pages (for PDFs)
   errorMessage String?      // Error message if processing failed
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  embeddings   DocumentEmbedding[]
-  chatSessions ChatSession[]
-  quizzes      Quiz[]
-  resume       Resume?
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  embeddings          DocumentEmbedding[]
+  chatSessions        ChatSession[]         // Legacy: single document per session
+  sessionDocuments    ChatSessionDocument[] // Many-to-many: multiple documents per session
+  quizzes             Quiz[]
+  resume              Resume?
 
   @@index([userId])
   @@index([status])
@@ -368,6 +370,7 @@ model Resume {
   mimeType   String
   status     ResumeStatus @default(PENDING)
   parsedText String?      @db.Text
+  pageCount  Int?         // Number of pages (for PDFs)
   analysisScore Float?    // Overall resume quality score (0-100)
   analysisStrengths String[] // What's good about the resume
   analysisWeaknesses String[] // Areas for improvement
@@ -410,18 +413,33 @@ model DocumentEmbedding {
 model ChatSession {
   id         String  @id @default(uuid())
   userId     String
-  documentId String?
+  documentId String? // Legacy field for backward compatibility (single document)
   title      String? // Auto-generated or user-provided
   model      String  @default("gpt-4-turbo") // AI model used
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  document Document?     @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  messages ChatMessage[]
+  user                User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document            Document?             @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  messages            ChatMessage[]
+  sessionDocuments    ChatSessionDocument[] // Many-to-many relationship with documents
 
   @@index([userId])
+  @@index([documentId])
+}
+
+model ChatSessionDocument {
+  id         String   @id @default(uuid())
+  sessionId  String
+  documentId String
+  createdAt  DateTime @default(now())
+
+  session  ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  document Document    @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, documentId])
+  @@index([sessionId])
   @@index([documentId])
 }
 

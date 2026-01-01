@@ -14,6 +14,10 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import OpenAI from "openai";
+import { generateEmbeddingsBatch } from "../../utils/embeddings";
+import {
+  storeEmbeddings,
+} from "../../utils/pgvector";
 
 const openaiClient = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -229,14 +233,63 @@ async function processResumeAsync(
       where: { id: resumeId },
       data: {
         parsedText: extractedText.text || null,
+        ...(extractedText.pageCount !== undefined && { pageCount: extractedText.pageCount }),
         status: extractedText.text ? "PROCESSING" : "READY",
       },
     });
 
-    await prisma.document.update({
-      where: { id: documentId },
-      data: { status: "READY" },
-    });
+    // Create chunks and embeddings for chat/RAG functionality (same as regular documents)
+    if (extractedText.text && extractedText.chunks && extractedText.chunks.length > 0) {
+      try {
+        console.log(`[Resume Processing] Creating ${extractedText.chunks.length} chunks and embeddings for chat sessions...`);
+        const texts = extractedText.chunks.map((chunk) => chunk.text);
+        const embeddings = await generateEmbeddingsBatch(texts, 100);
+
+        const embeddingData = extractedText.chunks
+          .map((chunk, index) => ({
+            index: chunk.index,
+            text: chunk.text,
+            embedding: embeddings[index],
+            metadata: chunk.metadata,
+          }))
+          .filter(
+            (
+              item,
+            ): item is {
+              index: number;
+              text: string;
+              embedding: number[];
+              metadata: any;
+            } => item.embedding !== undefined && item.embedding.length > 0,
+          );
+
+        await storeEmbeddings(documentId, embeddingData);
+
+        await prisma.document.update({
+          where: { id: documentId },
+          data: {
+            status: "READY",
+            vectorized: true,
+            chunkCount: extractedText.chunks.length,
+            ...(extractedText.pageCount !== undefined && { pageCount: extractedText.pageCount }),
+          },
+        });
+
+        console.log(`[Resume Processing] Created ${embeddingData.length} embeddings for document ${documentId}`);
+      } catch (error: any) {
+        console.error(`[Resume Processing] Failed to create embeddings:`, error);
+        // Continue with analysis even if embedding fails
+        await prisma.document.update({
+          where: { id: documentId },
+          data: { status: "READY" },
+        });
+      }
+    } else {
+      await prisma.document.update({
+        where: { id: documentId },
+        data: { status: "READY" },
+      });
+    }
 
     if (extractedText.text) {
       console.log(`[Resume Processing] Starting analysis for ${resumeId}...`);
@@ -246,9 +299,9 @@ async function processResumeAsync(
           where: { id: resumeId },
           data: { status: "READY" },
         });
-        console.log(`[Resume Processing]  Resume ${resumeId} complete - text extracted and analyzed`);
+        console.log(`[Resume Processing] Resume ${resumeId} complete - text extracted and analyzed`);
       } catch (error: any) {
-        console.error(`[Resume Processing]  Analysis failed for ${resumeId}:`, error);
+        console.error(`[Resume Processing] Analysis failed for ${resumeId}:`, error);
         await prisma.resume.update({
           where: { id: resumeId },
           data: { status: "READY" },

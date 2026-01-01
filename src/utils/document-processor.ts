@@ -20,12 +20,18 @@ export interface DocumentChunk {
 export interface ProcessedDocument {
   text: string;
   chunks: DocumentChunk[];
+  pageCount?: number; // Number of pages (for PDFs)
+}
+
+export interface ExtractedTextResult {
+  text: string;
+  pageCount?: number;
 }
 
 export async function extractTextFromFile(
   filePath: string,
   mimeType: string,
-): Promise<string> {
+): Promise<ExtractedTextResult> {
   try {
     switch (mimeType) {
       case "application/pdf": {
@@ -36,23 +42,23 @@ export async function extractTextFromFile(
       case "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
       case "application/msword": {
         const wordBuffer = await fs.readFile(filePath);
-        return await extractTextFromWord(wordBuffer);
+        return { text: await extractTextFromWord(wordBuffer) };
       }
 
       case "application/vnd.openxmlformats-officedocument.presentationml.presentation":
       case "application/vnd.ms-powerpoint":
-        return await extractTextFromPowerPoint(filePath);
+        return { text: await extractTextFromPowerPoint(filePath) };
 
       case "text/plain":
       case "text/markdown": {
         const textBuffer = await fs.readFile(filePath);
-        return textBuffer.toString("utf-8");
+        return { text: textBuffer.toString("utf-8") };
       }
 
       default:
         try {
           const defaultBuffer = await fs.readFile(filePath);
-          return defaultBuffer.toString("utf-8");
+          return { text: defaultBuffer.toString("utf-8") };
         } catch {
           throw new Error(`Unsupported file type: ${mimeType}`);
         }
@@ -63,12 +69,15 @@ export async function extractTextFromFile(
 }
 
 /**
- * Extract text from PDF file
+ * Extract text and page count from PDF file
  */
-async function extractTextFromPDF(buffer: Buffer): Promise<string> {
+async function extractTextFromPDF(buffer: Buffer): Promise<ExtractedTextResult> {
   try {
     const data = await pdfParse(buffer);
-    return data.text;
+    return {
+      text: data.text,
+      pageCount: data.numpages || undefined,
+    };
   } catch (error: any) {
     throw new Error(`Failed to parse PDF: ${error.message}`);
   }
@@ -271,15 +280,16 @@ export async function processDocument(
     chunkOverlap?: number;
   },
 ): Promise<ProcessedDocument> {
-  const text = await extractTextFromFile(filePath, mimeType);
+  const extracted = await extractTextFromFile(filePath, mimeType);
   const chunks = chunkText(
-    text,
+    extracted.text,
     options?.chunkSize || 1000,
     options?.chunkOverlap || 200,
   );
 
   return {
-    text,
+    text: extracted.text,
     chunks,
+    pageCount: extracted.pageCount,
   };
 }

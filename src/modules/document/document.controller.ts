@@ -214,6 +214,7 @@ async function processDocumentAsync(
         status: "READY",
         vectorized: true,
         chunkCount: processed.chunks.length,
+        ...(processed.pageCount !== undefined && { pageCount: processed.pageCount }),
       },
     });
 
@@ -250,11 +251,10 @@ export const listDocuments = async (
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // Get all documents, excluding those linked to resumes
+    // Get all documents (including resumes - they can now be used in chat sessions)
     const documents = await prisma.document.findMany({
       where: {
         userId: req.user.id,
-        resume: null, 
       },
       orderBy: { createdAt: "desc" },
       select: {
@@ -268,6 +268,12 @@ export const listDocuments = async (
         errorMessage: true,
         createdAt: true,
         updatedAt: true,
+        resume: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
       },
     });
 

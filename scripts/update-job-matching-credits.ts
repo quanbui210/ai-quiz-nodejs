@@ -6,7 +6,7 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Updating job matching credit cost to 4...");
+  console.log("Updating job matching credit cost to 5...");
 
   try {
     const pricing = await prisma.creditPricing.upsert({
@@ -14,13 +14,13 @@ async function main() {
         feature: "job_matching",
       },
       update: {
-        creditCost: 4,
+        creditCost: 5,
         description: "Match a single job against user's CV (on-demand)",
         isActive: true,
       },
       create: {
         feature: "job_matching",
-        creditCost: 4,
+        creditCost: 5,
         description: "Match a single job against user's CV (on-demand)",
         isActive: true,
       },

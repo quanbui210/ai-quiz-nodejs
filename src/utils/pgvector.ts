@@ -108,7 +108,31 @@ export async function findSimilarChunksAcrossDocuments(
   }>
 > {
   try {
-    const results = await prisma.$queryRaw<
+    if (!documentIds || documentIds.length === 0) {
+      return [];
+    }
+
+    // Convert documentIds to properly formatted array for SQL
+    const embeddingVector = JSON.stringify(queryEmbedding);
+    // Cast each UUID individually and ensure the array is typed as uuid[]
+    const docIdsArray = documentIds.map(id => `'${id.replace(/'/g, "''")}'::uuid`).join(",");
+    
+    const sqlQuery = `
+      SELECT
+        id,
+        "documentId"::text as "documentId",
+        "chunkIndex",
+        "chunkText",
+        1 - (embedding <=> '${embeddingVector}'::vector) as similarity,
+        metadata
+      FROM "DocumentEmbedding"
+      WHERE "documentId"::uuid = ANY(ARRAY[${docIdsArray}]::uuid[])
+        AND 1 - (embedding <=> '${embeddingVector}'::vector) >= ${similarityThreshold}
+      ORDER BY embedding <=> '${embeddingVector}'::vector
+      LIMIT ${limit}
+    `;
+    
+    const results = await prisma.$queryRawUnsafe<
       Array<{
         id: string;
         documentId: string;
@@ -117,23 +141,12 @@ export async function findSimilarChunksAcrossDocuments(
         similarity: number;
         metadata: any;
       }>
-    >`
-      SELECT
-        id,
-        "documentId",
-        "chunkIndex",
-        "chunkText",
-        1 - (embedding <=> ${JSON.stringify(queryEmbedding)}::vector) as similarity,
-        metadata
-      FROM "DocumentEmbedding"
-      WHERE "documentId" = ANY(${documentIds}::uuid[])
-        AND 1 - (embedding <=> ${JSON.stringify(queryEmbedding)}::vector) >= ${similarityThreshold}
-      ORDER BY embedding <=> ${JSON.stringify(queryEmbedding)}::vector
-      LIMIT ${limit}
-    `;
+    >(sqlQuery);
 
     return results;
   } catch (error: any) {
+    console.error("[findSimilarChunksAcrossDocuments] Error:", error);
+    console.error("[findSimilarChunksAcrossDocuments] documentIds:", documentIds);
     throw new Error(
       `Failed to find similar chunks across documents: ${error.message}`,
     );
