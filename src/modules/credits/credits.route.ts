@@ -10,8 +10,11 @@ import { verifyWebhookSignature } from "../../utils/stripe";
 
 const router = Router();
 
+// Public route - no auth needed
+router.get("/packs", getCreditPacks);
 
-router.get("/balance", async (req: Request & { user?: any }, res: Response) => {
+// Protected routes - require authentication
+router.get("/balance", authenticate, async (req: Request & { user?: any }, res: Response) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -29,8 +32,7 @@ router.get("/balance", async (req: Request & { user?: any }, res: Response) => {
   }
 });
 
-
-router.get("/history", async (req: Request & { user?: any }, res: Response) => {
+router.get("/history", authenticate, async (req: Request & { user?: any }, res: Response) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -53,8 +55,7 @@ router.get("/history", async (req: Request & { user?: any }, res: Response) => {
   }
 });
 
-
-router.get("/analytics", async (req: Request & { user?: any }, res: Response) => {
+router.get("/analytics", authenticate, async (req: Request & { user?: any }, res: Response) => {
   try {
     if (!req.user?.id) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -68,8 +69,6 @@ router.get("/analytics", async (req: Request & { user?: any }, res: Response) =>
     return res.status(500).json({ error: "Failed to get credit analytics" });
   }
 });
-
-router.get("/packs", getCreditPacks);
 
 router.post("/purchase", authenticate, createCreditPurchaseCheckout);
 

@@ -799,7 +799,7 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
   }
 
   try {
-    await CreditService.addCredits(
+    const result = await CreditService.addCredits(
       userId,
       totalCredits,
       CreditTransactionType.PURCHASE,
@@ -813,7 +813,7 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
       },
     );
 
-    console.log(`Successfully added ${totalCredits} credits to user ${userId} from pack ${packId}`);
+    console.log(`[Credit Purchase] +${totalCredits} credits added to user ${userId} (pack: ${packId}). New balance: ${result.newBalance}`);
   } catch (error: any) {
     console.error("Error processing credit purchase:", error);
     throw error;

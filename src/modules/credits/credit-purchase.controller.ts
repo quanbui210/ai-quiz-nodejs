@@ -219,7 +219,7 @@ export const handleCreditPurchaseWebhook = async (
           return res.status(400).json({ error: "Invalid metadata" });
         }
 
-        await CreditService.addCredits(
+        const result = await CreditService.addCredits(
           userId,
           totalCredits,
           CreditTransactionType.PURCHASE,
@@ -233,7 +233,7 @@ export const handleCreditPurchaseWebhook = async (
           },
         );
 
-        console.log(`Successfully added ${totalCredits} credits to user ${userId} from pack ${packId}`);
+        console.log(`[Credit Purchase] +${totalCredits} credits added to user ${userId} (pack: ${packId}). New balance: ${result.newBalance}`);
 
         return res.json({ received: true });
       } catch (error: any) {
