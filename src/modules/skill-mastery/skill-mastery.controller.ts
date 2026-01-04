@@ -946,7 +946,6 @@ export const getAvailableSkills = async (req: Request, res: Response) => {
       ],
     });
 
-    // Group by skill name
     const skillsMap = new Map<
       string,
       {

@@ -244,8 +244,8 @@ model UserSubscription {
   maxResumes                 Int      @default(2)
   
   // NEW: Credit-based system
-  creditsPerMonth            Int      @default(50)     // Monthly credit allocation
-  currentCredits             Int      @default(50)     // Current available credits
+  creditsPerMonth            Int      @default(30)     // Monthly credit allocation
+  currentCredits             Int      @default(30)     // Current available credits
   totalCreditsUsed           Int      @default(0)      // Lifetime credits used
   creditsUsedThisMonth       Int      @default(0)      // Credits used this billing period
   maxRolloverCredits         Int      @default(0)      // Max credits that can rollover (0 for free tier)

@@ -10,10 +10,8 @@ import { verifyWebhookSignature } from "../../utils/stripe";
 
 const router = Router();
 
-// Public route - no auth needed
 router.get("/packs", getCreditPacks);
 
-// Protected routes - require authentication
 router.get("/balance", authenticate, async (req: Request & { user?: any }, res: Response) => {
   try {
     if (!req.user?.id) {

@@ -8,9 +8,9 @@ function getCreditAllocationFromPlan(
   plan: { stripeProductId?: string | null; stripePriceId?: string | null }
 ): { creditsPerMonth: number; maxRolloverCredits: number } {
   const PLAN_CREDIT_MAPPING: Record<string, { creditsPerMonth: number; maxRolloverCredits: number }> = {
-    "Free": { creditsPerMonth: 50, maxRolloverCredits: 0 },
-    "free": { creditsPerMonth: 50, maxRolloverCredits: 0 },
-    "default": { creditsPerMonth: 50, maxRolloverCredits: 0 },
+    "Free": { creditsPerMonth: 30, maxRolloverCredits: 0 },
+    "free": { creditsPerMonth: 30, maxRolloverCredits: 0 },
+    "default": { creditsPerMonth: 30, maxRolloverCredits: 0 },
     "Pro": { creditsPerMonth: 100, maxRolloverCredits: 50 },
     "pro": { creditsPerMonth: 100, maxRolloverCredits: 50 },
     "Premium": { creditsPerMonth: 200, maxRolloverCredits: 100 },
@@ -23,7 +23,7 @@ function getCreditAllocationFromPlan(
   }
 
   // Default to Free tier
-  return { creditsPerMonth: 50, maxRolloverCredits: 0 };
+  return { creditsPerMonth: 30, maxRolloverCredits: 0 };
 }
 
 

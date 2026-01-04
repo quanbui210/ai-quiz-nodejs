@@ -120,30 +120,74 @@ export const getRecentJobs = async (
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const defaultLimit = 100;
+    // Parse pagination parameters
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
     const {
       location,
       role,
-      limit = defaultLimit,
     } = req.query;
     
-    const finalLimit = typeof limit === "string" ? parseInt(limit, 10) : defaultLimit;
+    // Validate pagination
+    const pageNum = Math.max(1, page);
+    const limitNum = Math.min(100, Math.max(1, limit)); // Max 100 per page
+    const skip = (pageNum - 1) * limitNum;
 
     const whereClause: any = {};
 
+    // Build AND conditions array for combining filters
+    const andConditions: any[] = [];
+
     if (location && typeof location === "string") {
-      whereClause.location = {
-        contains: location,
-        mode: "insensitive",
-      };
+      andConditions.push({
+        location: {
+          contains: location,
+          mode: "insensitive",
+        },
+      });
     }
 
     if (role && typeof role === "string") {
-      whereClause.role = {
-        contains: role,
-        mode: "insensitive",
-      };
+  
+      andConditions.push({
+        OR: [
+          {
+            role: {
+              contains: role,
+              mode: "insensitive",
+            },
+          },
+          {
+            title: {
+              contains: role,
+              mode: "insensitive",
+            },
+          },
+        ],
+      });
     }
+
+    if (andConditions.length > 0) {
+      whereClause.AND = andConditions;
+    }
+
+    const totalJobsInDb = await (prisma as any).job.count({});
+    console.log("[Recent Jobs] Total jobs in database:", totalJobsInDb);
+
+    console.log("[Recent Jobs] Query params:", {
+      page: pageNum,
+      limit: limitNum,
+      skip,
+      location,
+      role,
+      whereClause: JSON.stringify(whereClause),
+    });
+
+    const totalJobs = await (prisma as any).job.count({
+      where: whereClause,
+    });
+
+    console.log("[Recent Jobs] Total jobs matching filters:", totalJobs);
 
     const jobs = await (prisma as any).job.findMany({
       where: whereClause,
@@ -153,8 +197,11 @@ export const getRecentJobs = async (
       orderBy: {
         postedDate: "desc",
       },
-      take: finalLimit,
+      skip,
+      take: limitNum,
     });
+
+    console.log("[Recent Jobs] Jobs fetched:", jobs.length);
 
     const resume = await (prisma as any).resume.findFirst({
       where: {
@@ -192,15 +239,21 @@ export const getRecentJobs = async (
       canMatch: !!resume && !!resume.parsedText,
     }));
 
-    jobsList.sort((a: any, b: any) => {
-      const dateA = a.postedDate ? new Date(a.postedDate).getTime() : 0;
-      const dateB = b.postedDate ? new Date(b.postedDate).getTime() : 0;
-      return dateB - dateA;
-    });
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalJobs / limitNum);
+    const hasNext = pageNum < totalPages;
+    const hasPrev = pageNum > 1;
 
     return res.json({
       jobs: jobsList,
-      total: jobsList.length,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total: totalJobs,
+        totalPages,
+        hasNext,
+        hasPrev,
+      },
       hasResume: !!resume && !!resume.parsedText,
       requiresResume: !resume || !resume.parsedText,
     });

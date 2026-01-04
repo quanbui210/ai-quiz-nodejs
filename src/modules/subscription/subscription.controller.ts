@@ -23,9 +23,9 @@ function getPlanCredits(planName: string, productMetadata?: any): { creditsPerMo
   }
 
   const PLAN_CREDIT_MAPPING: Record<string, { creditsPerMonth: number; maxRolloverCredits: number }> = {
-    "Free": { creditsPerMonth: 50, maxRolloverCredits: 0 },
-    "free": { creditsPerMonth: 50, maxRolloverCredits: 0 },
-    "default": { creditsPerMonth: 50, maxRolloverCredits: 0 },
+    "Free": { creditsPerMonth: 30, maxRolloverCredits: 0 },
+    "free": { creditsPerMonth: 30, maxRolloverCredits: 0 },
+    "default": { creditsPerMonth: 30, maxRolloverCredits: 0 },
     "Pro": { creditsPerMonth: 100, maxRolloverCredits: 50 },
     "pro": { creditsPerMonth: 100, maxRolloverCredits: 50 },
     "Premium": { creditsPerMonth: 200, maxRolloverCredits: 100 },
@@ -37,7 +37,7 @@ function getPlanCredits(planName: string, productMetadata?: any): { creditsPerMo
     return PLAN_CREDIT_MAPPING[normalizedName];
   }
 
-  return { creditsPerMonth: 50, maxRolloverCredits: 0 };
+  return { creditsPerMonth: 30, maxRolloverCredits: 0 };
 }
 
 export const getPlans = async (req: Request, res: Response) => {
@@ -667,7 +667,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   });
 
   // Use the same credit allocation logic as updateSubscriptionFromPlan
-  let creditAllocation = { creditsPerMonth: 50, maxRolloverCredits: 0 };
+  let creditAllocation = { creditsPerMonth: 30, maxRolloverCredits: 0 };
   let gotCreditsFromStripe = false;
   
   if (plan) {
@@ -799,7 +799,7 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
   }
 
   try {
-    const result = await CreditService.addCredits(
+    await CreditService.addCredits(
       userId,
       totalCredits,
       CreditTransactionType.PURCHASE,
@@ -813,7 +813,7 @@ async function handleCreditPurchaseCompleted(session: Stripe.Checkout.Session) {
       },
     );
 
-    console.log(`[Credit Purchase] +${totalCredits} credits added to user ${userId} (pack: ${packId}). New balance: ${result.newBalance}`);
+    console.log(`Successfully added ${totalCredits} credits to user ${userId} from pack ${packId}`);
   } catch (error: any) {
     console.error("Error processing credit purchase:", error);
     throw error;
