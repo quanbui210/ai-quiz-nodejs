@@ -5,6 +5,8 @@ import OpenAI from "openai";
 import { generateEmbedding } from "../../utils/embeddings";
 import { findSimilarChunks, findSimilarChunksAcrossDocuments } from "../../utils/pgvector";
 import { observeOpenAI } from "@langfuse/openai";
+import { uploadFileToStorage, getFileUrl } from "../../utils/storage";
+import fs from "fs/promises";
 
 const openai = observeOpenAI(new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -270,7 +272,7 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const { sessionId } = req.params;
-    const { message } = req.body;
+    const { message, imageIds } = req.body; // imageIds: array of ChatImageAttachment IDs
 
     if (
       !message ||
@@ -340,12 +342,29 @@ export const sendMessage = async (req: AuthenticatedRequest, res: Response) => {
       });
     }
 
-    // Save user message
+    // Get image attachments if provided
+    let imageAttachments: any[] = [];
+    if (imageIds && Array.isArray(imageIds) && imageIds.length > 0) {
+      imageAttachments = await prisma.chatImageAttachment.findMany({
+        where: {
+          id: { in: imageIds },
+          messageId: null, // Only get unattached images (safety check)
+        },
+      });
+    }
+
+    // Save user message with image attachments
     const userMessage = await prisma.chatMessage.create({
       data: {
         sessionId: session.id,
         role: "USER",
         content: message,
+        images: imageAttachments.length > 0 ? {
+          connect: imageAttachments.map(img => ({ id: img.id }))
+        } : undefined,
+      },
+      include: {
+        images: true,
       },
     });
 
@@ -656,20 +675,83 @@ However, I was unable to retrieve specific content from ${isMultipleDocuments ? 
       systemPrompt = "You are a helpful AI assistant. Answer questions clearly and provide educational explanations.";
     }
 
+    // Check if we need to use vision API (if images are present)
+    const hasImages = imageAttachments.length > 0;
+    const visionModels = ["gpt-4o", "gpt-4-vision-preview", "gpt-4-turbo"];
+    const useVision = hasImages && visionModels.includes(session.model);
+
+    // Build message content - if images, use vision format
+    let userMessageContent: string | OpenAI.Chat.Completions.ChatCompletionContentPart[] = message;
+    
+    if (useVision && imageAttachments.length > 0) {
+      // Build vision message with images
+      const contentParts: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
+        { type: "text", text: message }
+      ];
+
+      // Add images - convert to base64 for OpenAI vision API
+      for (const image of imageAttachments) {
+        try {
+          // Download image from storage and convert to base64
+          const { downloadFileFromStorage } = await import("../../utils/storage");
+          const tempPath = require("path").join(require("os").tmpdir(), `chat-image-${image.id}-${Date.now()}`);
+          
+          await downloadFileFromStorage(image.filePath, tempPath);
+          const imageBuffer = await fs.readFile(tempPath);
+          const base64Image = imageBuffer.toString("base64");
+          
+          // Clean up temp file
+          await fs.unlink(tempPath).catch(console.error);
+          
+          // Determine MIME type
+          const mimeType = image.mimeType || "image/jpeg";
+          
+          contentParts.push({
+            type: "image_url",
+            image_url: {
+              url: `data:${mimeType};base64,${base64Image}`,
+            },
+          });
+        } catch (error: any) {
+          console.error(`Failed to process image ${image.id}:`, error);
+          // Fallback to URL if base64 conversion fails
+          try {
+            const imageUrl = getFileUrl(image.filePath);
+            contentParts.push({
+              type: "image_url",
+              image_url: {
+                url: imageUrl,
+              },
+            });
+          } catch (urlError) {
+            console.error(`Failed to get URL for image ${image.id}:`, urlError);
+          }
+        }
+      }
+
+      userMessageContent = contentParts;
+    }
+
     const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt },
       ...conversationHistory.map((msg: { role: string; content: string }) => ({
         role: msg.role.toLowerCase() as "user" | "assistant" | "system",
         content: msg.content,
       })),
-      { role: "user", content: message },
+      { 
+        role: "user", 
+        content: userMessageContent,
+      },
     ];
 
+    // Use vision model if images are present, otherwise use regular model
+    const modelToUse = useVision ? session.model : session.model;
+
     const completion = await openai.chat.completions.create({
-      model: session.model,
+      model: modelToUse,
       messages,
       temperature: 0.7,
-      max_tokens: 1000,
+      max_tokens: useVision ? 2000 : 1000, // More tokens for vision responses
     });
 
     const assistantMessage = completion.choices[0]?.message?.content || "";
@@ -703,6 +785,151 @@ However, I was unable to retrieve specific content from ${isMultipleDocuments ? 
   }
 };
 
+
+/**
+ * Upload image(s) for chat message
+ * POST /api/v1/chat/images/upload
+ * Supports single or multiple image uploads
+ */
+export const uploadChatImage = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Support multiple field names: "images" (plural) or "image" (singular)
+    // Multer.fields returns an object with field names as keys
+    const filesObj = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    let files: Express.Multer.File[] = [];
+    
+    if (filesObj) {
+      // Extract files from both "images" and "image" fields
+      if (filesObj["images"]) {
+        files = files.concat(filesObj["images"]);
+      }
+      if (filesObj["image"]) {
+        files = files.concat(filesObj["image"]);
+      }
+    } else if (req.file) {
+      // Fallback to single file (for backward compatibility)
+      files = [req.file];
+    }
+    
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: "No image files uploaded" });
+    }
+
+    // Validate image types
+    const allowedMimes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/webp",
+    ];
+
+    // Validate all files
+    for (const file of files) {
+      if (!allowedMimes.includes(file.mimetype)) {
+        // Clean up all uploaded files
+        await Promise.all(files.map(f => fs.unlink(f.path).catch(console.error)));
+        return res.status(400).json({
+          error: "Invalid file type",
+          message: "Only JPEG, PNG, GIF, and WebP images are allowed",
+        });
+      }
+    }
+
+    const uploadedImages = [];
+    const errors = [];
+
+    // Process each file
+    for (const file of files) {
+      try {
+        // Upload to storage
+        let storagePath: string;
+        try {
+          storagePath = await uploadFileToStorage(
+            file.path,
+            file.originalname,
+            req.user.id,
+          );
+        } catch (error: any) {
+          await fs.unlink(file.path).catch(console.error);
+          errors.push({
+            filename: file.originalname,
+            error: "Failed to upload to storage",
+            message: error.message,
+          });
+          continue;
+        }
+
+        await fs.unlink(file.path).catch(console.error);
+
+        // Create image attachment record (not yet linked to a message)
+        const imageAttachment = await prisma.chatImageAttachment.create({
+          data: {
+            filename: file.originalname,
+            filePath: storagePath,
+            fileSize: file.size,
+            mimeType: file.mimetype,
+            width: undefined, // Can be added later with image processing library
+            height: undefined, // Can be added later with image processing library
+          },
+        });
+
+        const imageUrl = getFileUrl(storagePath);
+
+        uploadedImages.push({
+          id: imageAttachment.id,
+          filename: imageAttachment.filename,
+          url: imageUrl,
+          fileSize: imageAttachment.fileSize,
+          mimeType: imageAttachment.mimeType,
+          width: imageAttachment.width,
+          height: imageAttachment.height,
+        });
+      } catch (error: any) {
+        console.error(`Failed to process image ${file.originalname}:`, error);
+        errors.push({
+          filename: file.originalname,
+          error: "Failed to process image",
+          message: error.message,
+        });
+      }
+    }
+
+    // Return results
+    if (uploadedImages.length === 0) {
+      return res.status(500).json({
+        error: "Failed to upload images",
+        errors: errors,
+      });
+    }
+
+    // If some succeeded and some failed, return partial success
+    if (errors.length > 0) {
+      return res.status(207).json({ // 207 Multi-Status
+        images: uploadedImages,
+        errors: errors,
+        message: `Successfully uploaded ${uploadedImages.length} image(s), ${errors.length} failed`,
+      });
+    }
+
+    // All succeeded
+    return res.status(201).json({
+      images: uploadedImages,
+      count: uploadedImages.length,
+      message: `Successfully uploaded ${uploadedImages.length} image(s)`,
+    });
+  } catch (error: any) {
+    console.error("Upload chat image error:", error);
+    return res.status(500).json({ error: "Failed to upload images" });
+  }
+};
 
 export const getAvailableModels = async (
   req: AuthenticatedRequest,
@@ -951,20 +1178,46 @@ export const getChatMessages = async (
       orderBy: {
         createdAt: "asc",
       },
-      select: {
-        id: true,
-        role: true,
-        content: true,
-        contextChunks: true,
-        tokenCount: true,
-        createdAt: true,
+      include: {
+        images: {
+          select: {
+            id: true,
+            filename: true,
+            filePath: true,
+            fileSize: true,
+            mimeType: true,
+            width: true,
+            height: true,
+            createdAt: true,
+          },
+        },
       },
     });
 
+    // Add image URLs to the response
+    const messagesWithImageUrls = messages.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      contextChunks: msg.contextChunks,
+      tokenCount: msg.tokenCount,
+      createdAt: msg.createdAt,
+      images: msg.images.map((img) => ({
+        id: img.id,
+        filename: img.filename,
+        url: getFileUrl(img.filePath),
+        fileSize: img.fileSize,
+        mimeType: img.mimeType,
+        width: img.width,
+        height: img.height,
+        createdAt: img.createdAt,
+      })),
+    }));
+
     return res.json({
       sessionId: sessionId,
-      messages: messages,
-      count: messages.length,
+      messages: messagesWithImageUrls,
+      count: messagesWithImageUrls.length,
     });
   } catch (error: any) {
     console.error("Get chat messages error:", error);

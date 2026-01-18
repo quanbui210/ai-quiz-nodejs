@@ -141,8 +141,8 @@ export const getRecentJobs = async (
     if (location && typeof location === "string") {
       andConditions.push({
         location: {
-          contains: location,
-          mode: "insensitive",
+        contains: location,
+        mode: "insensitive",
         },
       });
     }
@@ -153,8 +153,8 @@ export const getRecentJobs = async (
         OR: [
           {
             role: {
-              contains: role,
-              mode: "insensitive",
+        contains: role,
+        mode: "insensitive",
             },
           },
           {
@@ -183,11 +183,19 @@ export const getRecentJobs = async (
       whereClause: JSON.stringify(whereClause),
     });
 
-    const totalJobs = await (prisma as any).job.count({
+    // Count total Indeed jobs (excluding manually pasted ones)
+    const allJobs = await (prisma as any).job.findMany({
       where: whereClause,
+      select: {
+        id: true,
+        externalId: true,
+      },
     });
+    const totalIndeedJobs = allJobs.filter((job: any) => 
+      job.externalId && !job.externalId.startsWith("external_")
+    ).length;
 
-    console.log("[Recent Jobs] Total jobs matching filters:", totalJobs);
+    console.log("[Recent Jobs] Total Indeed jobs matching filters:", totalIndeedJobs);
 
     const jobs = await (prisma as any).job.findMany({
       where: whereClause,
@@ -198,10 +206,16 @@ export const getRecentJobs = async (
         postedDate: "desc",
       },
       skip,
-      take: limitNum,
+      take: limitNum * 2, // Fetch more to account for filtering
     });
 
-    console.log("[Recent Jobs] Jobs fetched:", jobs.length);
+    // Filter out manually pasted jobs (they have externalId starting with "external_")
+    // Only show jobs from Indeed (have externalId but not starting with "external_")
+    const indeedJobs = jobs.filter((job: any) => {
+      return job.externalId && !job.externalId.startsWith("external_");
+    }).slice(0, limitNum); // Take only the requested limit
+
+    console.log("[Recent Jobs] Jobs fetched:", jobs.length, "Indeed jobs:", indeedJobs.length);
 
     const resume = await (prisma as any).resume.findFirst({
       where: {
@@ -213,34 +227,67 @@ export const getRecentJobs = async (
       },
     });
 
-    const jobsList = jobs.map((job: any) => ({
-      id: job.id,
-      title: job.title,
-      company: job.company,
-      companyLogoUrl: job.companyLogoUrl || null,
-      location: job.location,
-      url: job.url,
-      postedDate: job.postedDate,
-      scrapedAt: job.scrapedAt,
-      salaryMin: job.salaryMin,
-      salaryMax: job.salaryMax,
-      salaryCurrency: job.salaryCurrency,
-      jobType: job.jobType || [],
-      experienceLevel: job.experienceLevel,
-      role: job.role,
-      description: job.descriptionRaw,
-      analysis: job.analysis ? {
-        mustHaveSkills: job.analysis.mustHaveSkills || [],
-        niceToHaveSkills: job.analysis.niceToHaveSkills || [],
-        experienceYears: job.analysis.experienceYears,
-        educationLevel: job.analysis.educationLevel,
-        languageRequirements: job.analysis.languageRequirements || [],
-      } : null,
-      canMatch: !!resume && !!resume.parsedText,
-    }));
+    // Check which jobs have already been matched by this user
+    const jobIds = indeedJobs.map((job: any) => job.id);
+    const existingMatches = await (prisma as any).userJobMatch.findMany({
+      where: {
+        userId: req.user.id,
+        jobAnalysis: {
+          job: {
+            id: {
+              in: jobIds,
+            },
+          },
+        },
+      },
+      include: {
+        jobAnalysis: {
+          select: {
+            jobId: true,
+          },
+        },
+      },
+    });
+
+    // Create a map of jobId -> matchId for quick lookup
+    const jobMatchMap = new Map<string, string>();
+    existingMatches.forEach((match: any) => {
+      jobMatchMap.set(match.jobAnalysis.jobId, match.id);
+    });
+
+    const jobsList = indeedJobs.map((job: any) => {
+      const matchId = jobMatchMap.get(job.id);
+      return {
+        id: job.id,
+        title: job.title,
+        company: job.company,
+        companyLogoUrl: job.companyLogoUrl || null,
+        location: job.location,
+        url: job.url,
+        postedDate: job.postedDate,
+        scrapedAt: job.scrapedAt,
+        salaryMin: job.salaryMin,
+        salaryMax: job.salaryMax,
+        salaryCurrency: job.salaryCurrency,
+        jobType: job.jobType || [],
+        experienceLevel: job.experienceLevel,
+        role: job.role,
+        description: job.descriptionRaw,
+        analysis: job.analysis ? {
+          mustHaveSkills: job.analysis.mustHaveSkills || [],
+          niceToHaveSkills: job.analysis.niceToHaveSkills || [],
+          experienceYears: job.analysis.experienceYears,
+          educationLevel: job.analysis.educationLevel,
+          languageRequirements: job.analysis.languageRequirements || [],
+        } : null,
+        canMatch: !!resume && !!resume.parsedText,
+        hasMatch: !!matchId,
+        matchId: matchId || null,
+      };
+    });
 
     // Calculate pagination metadata
-    const totalPages = Math.ceil(totalJobs / limitNum);
+    const totalPages = Math.ceil(totalIndeedJobs / limitNum);
     const hasNext = pageNum < totalPages;
     const hasPrev = pageNum > 1;
 
@@ -249,7 +296,7 @@ export const getRecentJobs = async (
       pagination: {
         page: pageNum,
         limit: limitNum,
-        total: totalJobs,
+        total: totalIndeedJobs,
         totalPages,
         hasNext,
         hasPrev,
@@ -506,6 +553,16 @@ export const matchSingleJob = async (
     const filteredNiceToHave = filterCommonSkills(job.analysis.niceToHaveSkills || []);
     const filteredUserSkills = filterCommonSkills(userSkills);
 
+    let cachedAtsHygieneReport = null;
+    try {
+      const { getOrGenerateAtsHygieneReport } = await import("../resume/ats-hygiene.service");
+      const result = await getOrGenerateAtsHygieneReport(resume.id);
+      cachedAtsHygieneReport = result.report;
+      console.log(`[Job Matching] Using ${result.cached ? 'cached' : 'newly generated'} ATS Hygiene Report for resume ${resume.id}`);
+    } catch (error: any) {
+      console.warn(`[Job Matching] Failed to get cached ATS Hygiene Report, will generate in LLM call:`, error.message);
+    }
+
     const analysis = await analyzeJobMatchWithLLM({
       job: {
         ...job,
@@ -523,6 +580,7 @@ export const matchSingleJob = async (
             userCurrentPosition: user?.currentPosition || undefined,
       vectorSimilarity,
       pageCount: resume.pageCount || undefined,
+      cachedAtsHygieneReport,
     });
 
     if (!analysis.matchExplanation?.ats) {

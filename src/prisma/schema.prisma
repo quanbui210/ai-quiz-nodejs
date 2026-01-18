@@ -400,6 +400,10 @@ model Resume {
   yearsOfExperience Int? // Years of experience extracted from CV
   educationLevel String? // Education level from CV
   
+  // ATS Hygiene Report cache
+  atsHygieneReport            Json?     // Cached ATS Hygiene Report
+  atsHygieneReportGeneratedAt DateTime? // Timestamp when report was generated
+  
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
@@ -471,9 +475,26 @@ model ChatMessage {
   createdAt DateTime @default(now())
 
   session ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  images  ChatImageAttachment[]
 
   @@index([sessionId])
   @@index([createdAt])
+}
+
+model ChatImageAttachment {
+  id        String   @id @default(uuid())
+  messageId String?  // Nullable: images can be uploaded before being attached to a message
+  filename  String
+  filePath  String   // Storage path in Supabase
+  fileSize  Int
+  mimeType  String   // e.g., "image/png", "image/jpeg"
+  width     Int?     // Image width in pixels
+  height    Int?     // Image height in pixels
+  createdAt DateTime @default(now())
+
+  message ChatMessage? @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
 }
 
 enum SubscriptionStatus {

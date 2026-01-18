@@ -23,27 +23,27 @@ type LengthStatus = "Optimal" | "Too Short" | "Too Long";
 type FileTypeRecommendation = "PDF" | "DOCX" | "Both acceptable";
 
 interface AtsAssessment {
-  matchScore: number; // 0-100 (calculated using additive model)
+  matchScore: number;
   matchLabel: MatchLabel;
-  executiveSummary: string; // 2-3 sentences, tier-appropriate
-  hiringManagerVibe: string; // "What a recruiter thinks in 6 seconds"
+  executiveSummary: string; 
+  hiringManagerVibe: string;
   tier: MatchTier;
-  disclaimer?: string; // User-facing disclaimer about ATS visibility score
+  disclaimer?: string; 
 }
 
 interface AtsKeywordMatch {
   keyword: string;
-  context: string; // Where found in resume
+  context: string; 
   status: "met" | "partial" | "not_met";
-  evidenceQuotes?: string[]; // Verbatim from resume
+  evidenceQuotes?: string[]; 
 }
 
 interface AtsMissingKeyword {
   keyword: string;
   importance: KeywordImportance;
-  recommendation: string; // Specific action
-  whereToAdd: string; // "Skills section + Experience bullets"
-  impactIfAdded?: string; // "Would increase score by ~8 points"
+  recommendation: string; 
+  whereToAdd: string; 
+  impactIfAdded?: string; 
 }
 
 interface AtsKeywordGapAnalysis {
@@ -56,32 +56,32 @@ interface AtsKeywordGapAnalysis {
 }
 
 interface AtsContentOptimization {
-  originalBullet: string; // Current resume text
-  suggestedBullet: string; // XYZ formula version
-  logic: string; // Why this change helps
+  originalBullet: string; 
+  suggestedBullet: string; 
+  logic: string; 
   impactFactor: ImpactFactor;
-  atsStrategy: string; // Why this beats the bot
+  atsStrategy: string; 
   section: "EXPERIENCE" | "PROJECTS" | "SKILLS" | "SUMMARY";
-  target: string; // "Most recent role" or "Project X"
+  target: string; 
 }
 
-interface AtsHygieneReport {
+export interface AtsHygieneReport {
   parsingReadiness: ParsingReadiness;
-  warnings: string[]; // e.g., "Two-column layout detected"
+  warnings: string[]; 
   lengthCheck: {
     status: LengthStatus;
     detail: string;
   };
   fileTypeRecommendation: FileTypeRecommendation;
-  formattingRisks?: string[]; // Specific ATS parsing issues
+  formattingRisks?: string[]; 
 }
 
 interface AtsStrategicAdvice {
-  top3Strengths: string[]; // Evidence-based, specific
-  top3Gaps: string[]; // Actionable, prioritized
-  careerPivot?: string; // Only for Tier 1
-  quickWins?: string[]; // High-impact, low-effort (Tier 2/3)
-  polishSuggestions?: string[]; // Only for Tier 3
+  top3Strengths: string[]; 
+  top3Gaps: string[]; 
+  careerPivot?: string; 
+  quickWins?: string[]; 
+  polishSuggestions?: string[]; 
 }
 
 interface AtsRequirementMatrixItem {
@@ -98,7 +98,7 @@ interface AtsMatchDetails {
   contentOptimization: AtsContentOptimization[];
   atsHygieneReport: AtsHygieneReport;
   strategicAdvice: AtsStrategicAdvice;
-  nextSteps: string[]; // Prioritized, actionable checklist (tier-appropriate)
+  nextSteps: string[];
   requirementsMatrix: AtsRequirementMatrixItem[];
 }
 
@@ -108,6 +108,85 @@ function escapeRegex(input: string): string {
 
 function normalizeSnippet(snippet: string): string {
   return snippet.replace(/\s+/g, " ").trim();
+}
+
+
+export function calculateLengthCheck(
+  pageCount?: number,
+  experienceYears?: number,
+): { status: LengthStatus; detail: string } {
+  if (pageCount === undefined || pageCount === null) {
+    return {
+      status: "Optimal",
+      detail: "Unable to determine page count. For most roles, 1-2 pages is optimal.",
+    };
+  }
+
+  const experienceKnown = experienceYears !== undefined && experienceYears !== null;
+  const years = experienceYears || 0;
+
+  if (pageCount === 1) {
+    if (experienceKnown && years <= 3) {
+      return {
+        status: "Optimal",
+        detail: "1 page is ideal for a candidate with up to 3 years of experience.",
+      };
+    } else if (experienceKnown && years > 3) {
+      return {
+        status: "Too Short",
+        detail: "1 page may be too short for a candidate with 4+ years of experience. Consider expanding to 2 pages to highlight your achievements.",
+      };
+    } else {
+      return {
+        status: "Optimal",
+        detail: "1 page is ideal for early-career candidates (0-3 years). If you have 4+ years of experience, consider expanding to 2 pages to better showcase your achievements.",
+      };
+    }
+  } else if (pageCount === 2) {
+    if (experienceKnown && years <= 3) {
+      return {
+        status: "Optimal",
+        detail: "2 pages is acceptable for a candidate with up to 3 years of experience, though 1 page is preferred for early-career roles.",
+      };
+    } else if (experienceKnown && years > 3 && years <= 10) {
+      return {
+        status: "Optimal",
+        detail: "2 pages is ideal for a candidate with 4-10 years of experience.",
+      };
+    } else if (experienceKnown && years > 10) {
+      return {
+        status: "Optimal",
+        detail: "2 pages is appropriate for a candidate with 10+ years of experience.",
+      };
+    } else {
+      return {
+        status: "Optimal",
+        detail: "2 pages is ideal for most candidates. This length works well for candidates with 2-10 years of experience. For early-career (0-3 years), 1 page is preferred. For very experienced candidates (10+ years), 2 pages is still appropriate.",
+      };
+    }
+  } else if (pageCount === 3) {
+    if (experienceKnown && years < 10) {
+      return {
+        status: "Too Long",
+        detail: "3 pages may be too long for a candidate with less than 10 years of experience. Most recruiters prefer 1-2 pages.",
+      };
+    } else if (experienceKnown && years >= 10) {
+      return {
+        status: "Optimal",
+        detail: "3 pages is acceptable for a candidate with 10+ years of experience, though 2 pages is preferred by most recruiters.",
+      };
+    } else {
+      return {
+        status: "Too Long",
+        detail: "3 pages may be too long for most roles. Most recruiters prefer 1-2 pages. For candidates with less than 10 years of experience, 3 pages is typically too long. Even for very experienced candidates (10+ years), 2 pages is usually preferred.",
+      };
+    }
+  } else {
+    return {
+      status: "Too Long",
+      detail: `${pageCount} pages is too long for most roles. Recruiters typically prefer 1-2 pages regardless of experience level. Consider condensing your resume to highlight only the most relevant achievements.`,
+    };
+  }
 }
 
 function validateAtsMatchDetails(ats: any): AtsMatchDetails | undefined {
@@ -570,7 +649,8 @@ export async function analyzeJobMatchWithLLM(params: {
   userLanguages: string[];
   userCurrentPosition?: string;
   vectorSimilarity: number;
-  pageCount?: number; // Number of pages in the resume PDF
+  pageCount?: number;
+  cachedAtsHygieneReport?: AtsHygieneReport | null;
 }): Promise<{
   matchScore: number; // 0-100
   skillMatch: {
@@ -604,6 +684,7 @@ export async function analyzeJobMatchWithLLM(params: {
     userCurrentPosition,
     vectorSimilarity,
     pageCount,
+    cachedAtsHygieneReport,
   } = params;
 
   if (!cvText || cvText.trim().length === 0) {
@@ -670,7 +751,7 @@ export async function analyzeJobMatchWithLLM(params: {
     ? extractEvidenceSnippets({
         text: cvTextForReasoning,
         terms: evidenceTerms,
-        maxSnippetsPerTerm: 5, // Increased to catch more instances
+        maxSnippetsPerTerm: 5,
         windowChars: 120, // Increased window to get more context
       })
     : {};
@@ -690,6 +771,8 @@ export async function analyzeJobMatchWithLLM(params: {
         return acc;
       }, {} as Record<string, string[]>),
   });
+
+  const preCalculatedLengthCheck = calculateLengthCheck(pageCount, userExperienceYears);
 
   const completion = await openai.chat.completions.create({
     model: DEFAULT_MODEL,
@@ -964,7 +1047,7 @@ DIAGNOSTIC GUIDELINES:
 
 3. ATS HYGIENE CHECK:
    - Check for parsing risks: tables, images, two-column layouts
-   - Verify length: ${pageCount !== undefined ? `The resume has ${pageCount} page${pageCount !== 1 ? 's' : ''}. Use this actual page count to determine if the length is optimal.` : 'Infer the page count from the text length if possible.'} For most roles, 1-2 pages is optimal.
+   - Length check: ${pageCount !== undefined ? `The resume has ${pageCount} page${pageCount !== 1 ? 's' : ''}. The length check has been pre-calculated server-side based on page count and experience. Use the provided lengthCheck status and detail in your response.` : 'Page count is not available. Infer the page count from the text length if possible, but prioritize parsing risks and formatting issues.'}
    - Recommend file type (PDF vs DOCX based on employer)
    - Flag formatting issues that break ATS parsers
 
@@ -1149,6 +1232,12 @@ ${jobRequirements.description}
 RESUME EXCERPT (for reasoning only; DO NOT quote from here unless the quote exists in EVIDENCE_SNIPPETS):
 ${cvTextForReasoning.trim().length ? cvTextForReasoning : "[missing]"}
 
+PRE-CALCULATED LENGTH CHECK (use this exact value in your response):
+${pageCount !== undefined ? `The resume has ${pageCount} page${pageCount !== 1 ? 's' : ''}.` : 'Page count not available.'}
+Length Check Status: ${preCalculatedLengthCheck.status}
+Length Check Detail: ${preCalculatedLengthCheck.detail}
+IMPORTANT: Use this EXACT lengthCheck object in your atsHygieneReport response. Do NOT recalculate or infer a different value.
+
 EVIDENCE_SNIPPETS (the ONLY allowed source for evidenceQuotes):
 ${JSON.stringify(evidenceSnippets)}
 
@@ -1316,6 +1405,13 @@ CRITICAL SCORING PRINCIPLES (ADDITIVE MODEL):
           if (!validated) {
             console.error("[Job Matching] ⚠️ CRITICAL: ATS validation failed!");
             return undefined;
+          }
+          if (cachedAtsHygieneReport) {
+            validated.atsHygieneReport = cachedAtsHygieneReport;
+            console.log(`[Job Matching] Using cached ATS Hygiene Report for resume`);
+          } else if (validated.atsHygieneReport && pageCount !== undefined) {
+            validated.atsHygieneReport.lengthCheck = preCalculatedLengthCheck;
+            console.log(`[Job Matching] Using pre-calculated lengthCheck: ${preCalculatedLengthCheck.status} (${pageCount} pages, ${userExperienceYears || 0} years experience)`);
           }
           return validated;
         })(),

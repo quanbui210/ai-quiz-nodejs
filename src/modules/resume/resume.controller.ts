@@ -18,6 +18,7 @@ import { generateEmbeddingsBatch } from "../../utils/embeddings";
 import {
   storeEmbeddings,
 } from "../../utils/pgvector";
+import { getOrGenerateAtsHygieneReport, invalidateAtsHygieneCache } from "./ats-hygiene.service";
 
 const openaiClient = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -238,7 +239,8 @@ async function processResumeAsync(
       },
     });
 
-    // Create chunks and embeddings for chat/RAG functionality (same as regular documents)
+    await invalidateAtsHygieneCache(resumeId).catch(console.error);
+
     if (extractedText.text && extractedText.chunks && extractedText.chunks.length > 0) {
       try {
         console.log(`[Resume Processing] Creating ${extractedText.chunks.length} chunks and embeddings for chat sessions...`);
@@ -628,6 +630,64 @@ export const analyzeResumeManually = async (
   } catch (error: any) {
     console.error("Manual resume analysis error:", error);
     return res.status(500).json({ error: "Failed to analyze resume" });
+  }
+};
+
+export const getAtsHygieneReport = async (
+  req: AuthenticatedRequest,
+  res: Response,
+) => {
+  try {
+    if (!req.user?.id) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    const { resumeId } = req.params;
+
+    if (!resumeId) {
+      return res.status(400).json({ error: "Resume ID is required" });
+    }
+
+    const resume = await prisma.resume.findFirst({
+      where: {
+        id: resumeId,
+        userId: req.user.id,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!resume) {
+      return res.status(404).json({ error: "Resume not found" });
+    }
+
+    const { report, cached } = await getOrGenerateAtsHygieneReport(resumeId);
+
+    const resumeWithTimestamp = await (prisma as any).resume.findUnique({
+      where: { id: resumeId },
+      select: {
+        atsHygieneReportGeneratedAt: true,
+      },
+    });
+
+    return res.json({
+      atsHygieneReport: report,
+      cached,
+      generatedAt: resumeWithTimestamp?.atsHygieneReportGeneratedAt || null,
+    });
+  } catch (error: any) {
+    console.error("Get ATS Hygiene Report error:", error);
+    if (error.message === "Resume not found") {
+      return res.status(404).json({ error: "Resume not found" });
+    }
+    if (error.message === "Resume must be processed and ready") {
+      return res.status(400).json({ error: "Resume must be processed and ready" });
+    }
+    if (error.message === "Resume text not available") {
+      return res.status(400).json({ error: "Resume text not available" });
+    }
+    return res.status(500).json({ error: "Failed to get ATS Hygiene Report" });
   }
 };
 

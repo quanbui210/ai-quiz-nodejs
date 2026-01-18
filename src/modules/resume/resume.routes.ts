@@ -8,6 +8,7 @@ import {
   getResume,
   listResumes,
   uploadResume,
+  getAtsHygieneReport,
 } from "./resume.controller";
 import { authenticate } from "../../middleware/auth.middleware";
 import { checkResumeLimit } from "../../middleware/limit-check.middleware";
@@ -60,6 +61,7 @@ const upload = multer({
 router.post("/upload", authenticate, checkResumeLimit, upload.single("file"), uploadResume);
 router.get("/", authenticate, listResumes);
 router.get("/:resumeId/preview", authenticate, getResumePreview);
+router.get("/:resumeId/ats-hygiene", authenticate, getAtsHygieneReport);
 router.post("/:resumeId/analyze", authenticate, analyzeResumeManually);
 router.get("/:resumeId", authenticate, getResume);
 router.delete("/:resumeId", authenticate, deleteResume);

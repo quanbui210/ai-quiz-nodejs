@@ -203,7 +203,6 @@ Respond ONLY with valid JSON, no markdown, no code blocks, no explanations.`,
 
   const rawResponse = completion.choices[0]?.message?.content;
   
-  // Try to clean the response if it has markdown code blocks
   let cleanedResponse = rawResponse;
   if (cleanedResponse) {
     cleanedResponse = cleanedResponse.replace(/```json\n?/g, "").replace(/```\n?/g, "").trim();
